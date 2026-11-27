@@ -1,5 +1,7 @@
 import { decodeConfiguration, SOCKET_PATH_MAX_BYTES, visibleText } from "../adapter/config.js";
 import type { Configuration, Permission } from "../adapter/config.js";
+import { decodeGateway, parseJson } from "./schema.js";
+import type { GatewayRemote } from "./schema.js";
 
 export const permissions: ReadonlyArray<Permission> = ["discover", "push"];
 
@@ -22,19 +24,7 @@ export type LocalPlan = {
   readonly gateway: {
     readonly machineId: string;
     readonly socketPath: string;
-    readonly remote?: {
-      readonly machineId: string;
-      readonly endpoint: {
-        readonly mode: "connect" | "listen";
-        readonly address: string;
-      };
-      readonly rootCertificates: ReadonlyArray<string>;
-      readonly certificateChain: ReadonlyArray<string>;
-      readonly issuerCertificates: ReadonlyArray<string>;
-      readonly privateKey: string;
-      readonly crls: ReadonlyArray<string>;
-      readonly revocationState: string;
-    };
+    readonly remote?: GatewayRemote;
     readonly scopeIds: ReadonlyArray<string>;
     readonly policies: ReadonlyArray<{
       readonly machineId: string;
@@ -129,9 +119,37 @@ export function localReview(plan: LocalPlan, remote = false): string {
     `Machine: ${visibleText(plan.adapter.machineId)}; scope: ${visibleText(plan.choices.scopeId)}; label: ${visibleText(plan.adapter.label)}`,
     `Same-machine grants: ${plan.choices.permissions.join(", ") || "none"}`,
     remote
-      ? "Remote: one paired peer, granted the same permissions in both directions. Scope is account-wide, not a project boundary."
+      ? "Remote: one linked computer, trusted by its pinned public key and granted the same permissions in both directions. Scope is account-wide, not a project boundary."
       : "Remote: none; no TCP listener. Scope is account-wide, not a project boundary.",
     consent,
     lifetime,
   ].join("\n");
+}
+
+export function savedChoices(config: Configuration): LocalChoices {
+  const scopeId = config.scopeIds[0];
+
+  if (scopeId === undefined) {
+    throw new Error("pi-peers.json lists no scope");
+  }
+
+  const granted =
+    config.policies.find(
+      (grant) => grant.machineId === config.machineId && grant.scopeId === scopeId,
+    )?.permissions ?? [];
+
+  return {
+    machineId: config.machineId,
+    scopeId,
+    label: config.label,
+    permissions: granted,
+  };
+}
+
+export function currentPlan(config: Configuration, gatewayBytes: Buffer): LocalPlan {
+  return {
+    choices: savedChoices(config),
+    adapter: config,
+    gateway: decodeGateway(parseJson(gatewayBytes)),
+  };
 }

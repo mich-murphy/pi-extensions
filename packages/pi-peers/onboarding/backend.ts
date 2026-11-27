@@ -168,15 +168,14 @@ export async function applyLocal(
   plan: LocalPlan,
   backend: SetupBackend,
   progress: (message: string) => void,
-  prepare?: (executable: string, plan: LocalPlan) => Promise<LocalPlan>,
 ): Promise<ManagedSetup> {
   const paths = setupPaths(agentDir);
   await privateDirectory(paths.directory);
 
   const requiredCapabilities =
-    prepare !== undefined || plan.gateway.remote !== undefined
-      ? GATEWAY_REMOTE_SETUP_CAPABILITIES
-      : GATEWAY_LOCAL_SETUP_CAPABILITIES;
+    plan.gateway.remote === undefined
+      ? GATEWAY_LOCAL_SETUP_CAPABILITIES
+      : GATEWAY_REMOTE_SETUP_CAPABILITIES;
 
   const before = await bootstrapSnapshot(paths, requiredCapabilities);
 
@@ -223,8 +222,8 @@ export async function applyLocal(
       await replaceOwned(paths.installed, digest(before.installed), installed);
     }
 
-    let adapter = `${JSON.stringify(plan.adapter, null, 2)}\n`;
-    let gateway = `${JSON.stringify(plan.gateway, null, 2)}\n`;
+    const adapter = `${JSON.stringify(plan.adapter, null, 2)}\n`;
+    const gateway = `${JSON.stringify(plan.gateway, null, 2)}\n`;
     await createPrivate(
       paths.journal,
       JSON.stringify({
@@ -233,25 +232,13 @@ export async function applyLocal(
         gatewaySha256: digest(gateway),
       }),
     );
-    progress("Applying reviewed private configuration and pairing effects");
-
-    if (prepare !== undefined) {
-      const prepared = await prepare(executable, plan);
-      adapter = `${JSON.stringify(prepared.adapter, null, 2)}\n`;
-      gateway = `${JSON.stringify(prepared.gateway, null, 2)}\n`;
-    }
-
-    const pairingBytes = await regularBytes(join(paths.directory, "pairing.json"));
-
-    const pairingOwnership =
-      pairingBytes === undefined ? {} : { pairingSha256: digest(pairingBytes) };
+    progress("Applying reviewed private configuration");
 
     await createPrivate(
       paths.prepared,
       JSON.stringify({
         adapterSha256: digest(adapter),
         gatewaySha256: digest(gateway),
-        ...pairingOwnership,
       }),
     );
 
@@ -268,7 +255,6 @@ export async function applyLocal(
       executableSha256: await executableDigest(executable),
       adapterSha256: digest(adapter),
       gatewaySha256: digest(gateway),
-      ...pairingOwnership,
       gatewayPath: paths.gateway,
       socketPath: plan.adapter.socketPath,
     };

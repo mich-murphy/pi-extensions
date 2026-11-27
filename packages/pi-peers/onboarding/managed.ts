@@ -27,17 +27,22 @@ export type ManagedSetup = {
 };
 
 export type ManagedSnapshot = {
-  readonly state: "disabled" | "configured" | "degraded";
+  readonly state: string;
   readonly reason?: string;
+  readonly publicKey?: string;
   readonly text: string;
 };
+
+const word = Schema.String.check(Schema.isPattern(/^[a-z-]{1,64}$/u));
 
 const isNativeSnapshot = Schema.is(
   Schema.Struct({
     version: Schema.Literal(1),
     remote: Schema.Struct({
-      state: Schema.Literals(["disabled", "configured", "degraded"]),
-      reason: Schema.optionalKey(Schema.String.check(Schema.isPattern(/^[a-z-]{1,64}$/u))),
+      state: word,
+      reason: Schema.optionalKey(word),
+      trust: Schema.optionalKey(word),
+      publicKey: Schema.optionalKey(Schema.String.check(Schema.isPattern(/^[a-f0-9]{64}$/u))),
     }),
   }),
 );
@@ -55,14 +60,22 @@ export async function managedSnapshot(setup: ManagedSetup): Promise<ManagedSnaps
     throw new Error("Native diagnostic contract mismatch");
   }
 
-  const { state, reason } = value.remote;
+  const { state, reason, trust, publicKey } = value.remote;
+  const extra = [reason, trust === undefined ? undefined : `trust ${trust}`].filter(
+    (part) => part !== undefined,
+  );
+
   const snapshot: Types.Mutable<ManagedSnapshot> = {
     state,
-    text: `Remote config snapshot: ${state}${reason === undefined ? "" : ` (${reason})`}. Checked from saved credentials, not the live link.`,
+    text: `Remote config snapshot: ${state}${extra.length === 0 ? "" : ` (${extra.join(", ")})`}. Checked from the saved configuration, not the live link.`,
   };
 
   if (reason !== undefined) {
     snapshot.reason = reason;
+  }
+
+  if (publicKey !== undefined) {
+    snapshot.publicKey = publicKey;
   }
 
   return snapshot;

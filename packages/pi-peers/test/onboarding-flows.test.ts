@@ -5,62 +5,74 @@ import { initTheme } from "@earendil-works/pi-coding-agent";
 import { setKeybindings } from "@earendil-works/pi-tui";
 import { describe, expect, test, vi } from "vitest";
 import { testKeybindings, testTheme, testTui } from "../../../test-support/pi-tui";
+import { actionForm } from "../onboarding/menu/forms.js";
 import { MenuModel } from "../onboarding/menu/model.js";
 import type { Row, Screen } from "../onboarding/menu/model.js";
 import { outcomeLines, runWithProgress, storedOutcome } from "../onboarding/menu/progress.js";
 import type { Outcome } from "../onboarding/menu/progress.js";
-import { remoteDraft, remoteGate } from "../onboarding/menu/remote-form.js";
+import { remoteDraft, remoteGate, remoteRows } from "../onboarding/menu/remote-form.js";
+import type { RemoteDraft } from "../onboarding/menu/remote-form.js";
 import { peersMenu } from "../onboarding/menu/root.js";
 import type { ActionKind, RootState } from "../onboarding/menu/root.js";
 import { driveRpc } from "../onboarding/menu/rpc.js";
 import { applyState, setupForm } from "../onboarding/menu/setup-form.js";
-import type { SetupChoice, SetupDraft, SetupFormOptions } from "../onboarding/menu/setup-form.js";
+import type { SetupChoice, SetupDraft } from "../onboarding/menu/setup-form.js";
 import { PeersMenu } from "../onboarding/menu/tui.js";
 import { attempt, failedWith, INCOMPLETE_NEXT, safeReason } from "../onboarding/outcome.js";
 import { defaultChoices } from "../onboarding/plan.js";
 import { sharedFolder } from "../onboarding/refusal.js";
+import type { RemoteIntent } from "../onboarding/remote.js";
 import { NO_CHANGES } from "../onboarding/route.js";
 import { setupCommand } from "../onboarding/setup.js";
 import { dialog, noPins } from "./onboarding-fixtures.js";
 
-const draft = (overrides: Partial<SetupDraft> = {}): SetupDraft => ({
-  mode: "remote",
-  choices: defaultChoices("Menu Host"),
-  socket: "/private/owned/s",
-  socketRequired: false,
-  shared: false,
-  remote: { ...remoteDraft(), peer: "other-host", address: "127.0.0.1:7443" },
+const OWN = "1".repeat(64);
+const PEER = "2".repeat(64);
+
+const ready = (overrides: Partial<RemoteDraft> = {}): RemoteDraft => ({
+  ...remoteDraft(),
+  peer: "other-host",
+  address: "127.0.0.1:7443",
+  peerKey: PEER,
   ...overrides,
 });
 
-function form(state: SetupDraft, remoteBlocked?: string) {
-  const apply = vi.fn<(choice: SetupChoice) => void>();
+function linkForm(state: RemoteDraft) {
+  const run = vi.fn<(intent: RemoteIntent) => void>();
   const consented = vi.fn<(action: string) => void>();
-  const options: SetupFormOptions = { draft: state, details: () => "details", apply };
 
-  if (remoteBlocked !== undefined) {
-    options.remoteBlocked = remoteBlocked;
-  }
+  const screen = actionForm({
+    title: "Link",
+    rows: () => remoteRows(state, OWN),
+    details: () => ["details"],
+    consent: () => ({
+      label: "Link",
+      action: "Link",
+      gate: remoteGate(state, "menu-host", OWN),
+      description: "Link",
+      run,
+    }),
+  });
 
-  const screen = setupForm(options);
+  const model = new MenuModel(
+    {
+      kind: "list",
+      title: "Peers",
+      rows: () => [
+        {
+          id: "link",
+          label: "Link",
+          value: "",
+          activation: { kind: "open", screen: () => screen },
+        },
+      ],
+    },
+    { consented },
+  );
 
-  const menuRoot: Screen = {
-    kind: "list",
-    title: "Peers",
-    rows: () => [
-      {
-        id: "setup",
-        label: "Setup",
-        value: "",
-        activation: { kind: "open", screen: () => screen },
-      },
-    ],
-  };
+  model.activate("link");
 
-  const model = new MenuModel(menuRoot, { consented });
-  model.activate("setup");
-
-  return { model, apply, consented };
+  return { model, run, consented };
 }
 
 const applyRow = (model: MenuModel): Row | undefined =>
@@ -74,112 +86,113 @@ const openers = (model: MenuModel): Array<string> =>
         .map((row) => row.id)
     : [];
 
-describe("remote rows in the setup form", () => {
-  test("cross-field checks show on the Apply row before any consent", () => {
-    const { model, apply, consented } = form(
-      draft({ remote: { ...draft().remote, peer: "menu-host" } }),
-    );
-
-    expect(applyRow(model)?.value).toBe("Invalid: the peer must be another computer");
-    expect(applyRow(model)?.activation.kind).toBe("none");
-    model.activate("apply");
-    expect([apply.mock.calls.length, consented.mock.calls.length]).toStrictEqual([0, 0]);
-  });
-  test("a missing field is named first", () => {
-    expect(applyState(draft({ remote: { ...draft().remote, address: "" } }))).toStrictEqual({
+describe("the key link form", () => {
+  test("a missing field is named first, in form order", () => {
+    expect(remoteGate(remoteDraft(), "menu-host", OWN)).toStrictEqual({
       kind: "missing",
-      reason: "Address",
+      reason: "Peer machine",
+    });
+    expect(remoteGate(ready({ peerKey: "" }), "menu-host", OWN)).toStrictEqual({
+      kind: "missing",
+      reason: "Peer public key",
     });
   });
-  test("blocked remote acquisition shows Blocked and offers no consent", () => {
-    const { model } = form(draft(), "no verified gateway download");
-    expect(applyRow(model)?.value).toBe("Blocked: no verified gateway download");
-    expect(applyRow(model)?.activation.kind).toBe("none");
-  });
-  test("a ready remote form consents once, with the intent", () => {
-    const { model, apply, consented } = form(draft());
+  test("the same machine name is refused on the Link row before any consent", () => {
+    const { model, run, consented } = linkForm(ready({ peer: "menu-host" }));
+    expect(applyRow(model)?.value).toBe("Invalid: the peer must be another computer");
     model.activate("apply");
-    expect(consented).toHaveBeenCalledExactlyOnceWith("Apply");
-    expect(apply.mock.calls[0]?.[0]).toMatchObject({
-      remote: { kind: "create", peerMachineId: "other-host" },
-    });
+    expect([run.mock.calls.length, consented.mock.calls.length]).toStrictEqual([0, 0]);
   });
-  test("a join offer names this machine in fresh setup, and is refused for another machine", async () => {
-    const directory = await mkdtemp(join(tmpdir(), "pc-offer-"));
-
-    try {
-      const offer = join(directory, "offer.json");
-      await writeFile(offer, JSON.stringify({ machineId: "peer-a", peerMachineId: "elsewhere" }));
-      const state = draft({ remote: { ...remoteDraft(), kind: "join", address: "127.0.0.1:1" } });
-      const { model, apply } = form(state);
-      expect(applyRow(model)?.value).toBe("Missing: Offer file");
-      model.activate("offerPath");
-      await model.submit(offer);
-      expect(model.title()).toBe("Peers › Setup");
-      model.activate("rootSha256");
-      await model.submit("a".repeat(64));
-      expect(state.choices.machineId).toBe("elsewhere");
-      expect(applyRow(model)?.value).toBe("Ready");
-      expect(remoteGate(state.remote, "menu-host")).toStrictEqual({
-        kind: "invalid",
-        reason: "the offer is for elsewhere, not this computer",
-      });
-      model.activate("machineId");
-      await model.submit("menu-host");
-      expect(applyRow(model)?.value).toBe("Invalid: the offer is for elsewhere, not this computer");
-      expect(apply).not.toHaveBeenCalled();
-    } finally {
-      await rm(directory, { recursive: true, force: true });
-    }
-  });
-  test("re-pair must not reuse the old root", () => {
-    const oldRoot = "a".repeat(64);
-
-    const joined = {
-      ...remoteDraft(),
-      kind: "join" as const,
-      address: "127.0.0.1:1",
-      offerPath: "/offers/offer.json",
-      offer: { peerMachineId: "peer-a", localMachineId: "menu-host" },
-      rootSha256: oldRoot,
-    };
-
-    expect(remoteGate(joined, "menu-host", { oldRoot })).toStrictEqual({
-      kind: "invalid",
-      reason: "use the new root, not the old one",
-    });
-    expect(
-      remoteGate({ ...joined, rootSha256: "b".repeat(64) }, "menu-host", { oldRoot }).kind,
-    ).toBe("ready");
-  });
-  test("an unreadable offer stays in the editor with a plain error", async () => {
-    const state = draft({ remote: { ...remoteDraft(), kind: "join" } });
-    const { model } = form(state);
-    model.activate("offerPath");
-    await model.submit("/nonexistent/offer.json");
-    expect([model.title(), model.error]).toStrictEqual([
-      "Peers › Setup › Offer file",
-      "No file at that path.",
+  test.each([
+    ["uppercase", "A".repeat(64)],
+    ["too short", "a".repeat(63)],
+    ["not hex", `g${"a".repeat(63)}`],
+  ])("a %s peer key stays in the editor with a plain error", async (_name, key) => {
+    const state = ready({ peerKey: "" });
+    const { model } = linkForm(state);
+    model.activate("peerKey");
+    await model.submit(key);
+    expect([model.title(), model.error, state.peerKey]).toStrictEqual([
+      "Peers › Link › Peer public key",
+      "Use the other computer's public key: 64 characters, only 0-9 and a-f.",
+      "",
     ]);
   });
-  test("back pops exactly one level from every row of the remote form", () => {
-    for (const kind of ["create", "join", "existing"] as const) {
-      const { model } = form(draft({ remote: { ...remoteDraft(), kind } }));
+  test("this computer's own key is refused with a clear message", async () => {
+    const state = ready({ peerKey: "" });
+    const { model } = linkForm(state);
+    model.activate("peerKey");
+    await model.submit(OWN);
+    expect(model.error).toBe(
+      "That is this computer's own key. Enter the key the other computer shows.",
+    );
+    expect(remoteGate(ready({ peerKey: OWN }), "menu-host", OWN)).toStrictEqual({
+      kind: "invalid",
+      reason: "that is this computer's own key. enter the key the other computer shows",
+    });
+  });
+  test("surrounding whitespace is trimmed from a pasted key", async () => {
+    const state = ready({ peerKey: "" });
+    const { model } = linkForm(state);
+    model.activate("peerKey");
+    await model.submit(`  ${PEER}\n`);
+    expect([model.title(), state.peerKey]).toStrictEqual(["Peers › Link", PEER]);
+  });
+  test("the address help tells the listener to use its Tailscale IP", () => {
+    const listen = remoteRows(ready({ mode: "listen" }), OWN).find((row) => row.id === "address");
+    const connect = remoteRows(ready(), OWN).find((row) => row.id === "address");
+    expect(listen?.description).toContain("Tailscale IP, like 100.101.102.103:7443");
+    expect(connect?.description).toContain("listening address");
+  });
+  test("a ready form consents once, with the pinned intent", () => {
+    const { model, run, consented } = linkForm(ready());
+    model.activate("apply");
+    expect(consented).toHaveBeenCalledExactlyOnceWith("Link");
+    expect(run).toHaveBeenCalledExactlyOnceWith({
+      peerMachineId: "other-host",
+      endpoint: { mode: "connect", address: "127.0.0.1:7443" },
+      peerPublicKey: PEER,
+    });
+  });
+  test("back pops exactly one level from every row of the link form", () => {
+    const { model } = linkForm(ready());
 
-      for (const id of openers(model)) {
-        model.activate(id);
-        expect(model.depth).toBe(2);
-        model.back();
-        expect(model.title()).toBe("Peers › Setup");
-      }
+    for (const id of openers(model)) {
+      model.activate(id);
+      expect(model.depth).toBe(2);
+      model.back();
+      expect(model.title()).toBe("Peers › Link");
     }
   });
   test("RPC: Esc on the first input goes back and never opens a second one", async () => {
-    const { model } = form(draft({ remote: { ...remoteDraft(), kind: "join" } }));
-    const ctx = dialog(["Offer file: Required", undefined, undefined, undefined]);
+    const { model } = linkForm(remoteDraft());
+    const ctx = dialog(["Peer machine: Required", undefined, undefined, undefined]);
     await driveRpc(model, ctx);
     expect(ctx.ui.input).toHaveBeenCalledOnce();
     expect(model.closed).toBe(true);
+  });
+});
+
+function rowIds(screen: Screen): Array<string> {
+  return screen.kind === "list" ? screen.rows().map((row) => row.id) : [];
+}
+
+describe("the fresh setup form", () => {
+  test("has no remote rows", () => {
+    const screen = setupForm({
+      draft: fixDraft({ socketRequired: false, socket: "/private/owned/s" }),
+      details: () => "",
+      apply: vi.fn<(choice: SetupChoice) => void>(),
+    });
+
+    expect(rowIds(screen)).toStrictEqual([
+      "machineId",
+      "scopeId",
+      "label",
+      "permissions",
+      "review",
+      "apply",
+    ]);
   });
 });
 
@@ -279,13 +292,13 @@ describe("progress and stored outcomes", () => {
 
     expect(repaired.headline).toBe("✗ Repair failed: /home/dev/scratch is writable by other users");
     expect(
-      failedWith("Setup failed", new Error("Pairing manifest missing"), INCOMPLETE_NEXT),
+      failedWith("Setup failed", new Error("Key file missing"), INCOMPLETE_NEXT),
     ).toStrictEqual({
       ok: false,
       headline: "✗ Setup failed: unexpected error",
       facts: [],
       next: INCOMPLETE_NEXT,
-      technical: ["Pairing manifest missing"],
+      technical: ["Key file missing"],
     });
     expect(
       failedWith("Setup failed", new SyntaxError("secret"), INCOMPLETE_NEXT).technical,
@@ -425,15 +438,15 @@ describe("unreadable setup files", () => {
   });
 });
 
-const fixDraft = (overrides: Partial<SetupDraft> = {}): SetupDraft => ({
-  mode: "local",
-  choices: defaultChoices("Fix Host"),
-  socket: "",
-  socketRequired: true,
-  shared: false,
-  remote: remoteDraft(),
-  ...overrides,
-});
+function fixDraft(overrides: Partial<SetupDraft> = {}): SetupDraft {
+  return {
+    choices: defaultChoices("Fix Host"),
+    socket: "",
+    socketRequired: true,
+    shared: false,
+    ...overrides,
+  };
+}
 
 function rowOf(model: MenuModel, id: string): Row {
   const row =
@@ -491,9 +504,9 @@ describe("F5: Esc during an asynchronous save commits nothing", () => {
 });
 
 describe("F6: Blocked is shown before Missing", () => {
-  test("blocked remote acquisition wins over an empty Address", () => {
-    const state = fixDraft({ mode: "remote", socketRequired: false, socket: "/private/owned/s" });
-    expect(applyState(state, undefined, "no verified gateway download")).toStrictEqual({
+  test("blocked acquisition wins over an empty Socket", () => {
+    const state = fixDraft();
+    expect(applyState(state, "no verified gateway download")).toStrictEqual({
       kind: "blocked",
       reason: "no verified gateway download",
     });

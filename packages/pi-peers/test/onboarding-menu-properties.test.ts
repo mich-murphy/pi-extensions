@@ -6,7 +6,6 @@ import { actionForm } from "../onboarding/menu/forms.js";
 import type { Progress } from "../onboarding/menu/forms.js";
 import { MenuModel } from "../onboarding/menu/model.js";
 import type { Screen } from "../onboarding/menu/model.js";
-import { remoteDraft } from "../onboarding/menu/remote-form.js";
 import { peersMenu } from "../onboarding/menu/root.js";
 import type { RootState } from "../onboarding/menu/root.js";
 import { setupForm } from "../onboarding/menu/setup-form.js";
@@ -46,12 +45,10 @@ function run(tc: TestCase): Run {
 
   const options: SetupFormOptions = {
     draft: {
-      mode: "local",
       choices: defaultChoices("Prop Host"),
       socket: "/private/owned/s",
       socketRequired: false,
       shared: false,
-      remote: remoteDraft(),
     },
     details: () => "details",
     apply: () => {
@@ -93,8 +90,8 @@ const routeIds = [
   "disable",
   "keep",
   "repair",
-  "issuer",
-  "export",
+  "link",
+  "create",
   "apply",
   "review",
 ];
@@ -142,31 +139,31 @@ function existingScreen(blockedRepair: boolean, events: Array<string>) {
           },
         },
         {
-          id: "issuer",
-          label: "Issuer actions",
+          id: "link",
+          label: "Link a remote computer",
           value: "",
           activation: {
             kind: "open" as const,
             screen: () => ({
               kind: "list" as const,
-              title: "Issuer",
+              title: "Link",
               rows: () => [
                 {
-                  id: "export",
-                  label: "Export",
+                  id: "create",
+                  label: "Create key",
                   value: "",
                   activation: {
                     kind: "open" as const,
                     screen: () =>
                       actionForm({
-                        title: "Export",
+                        title: "Create key",
                         details: () => ["details"],
                         consent: () => ({
-                          label: "Export bundle",
+                          label: "Create key",
                           action: "Apply",
                           gate: { kind: "ready", value: undefined },
-                          description: "Export",
-                          run: effect("export"),
+                          description: "Create key",
+                          run: effect("create"),
                         }),
                       }),
                   },

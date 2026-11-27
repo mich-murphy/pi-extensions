@@ -9,10 +9,6 @@ import { vi } from "vitest";
 import { errnoCode } from "../../shared/errno.js";
 import type { GatewayCatalog } from "../onboarding/catalog.js";
 import type { DialogContext } from "../onboarding/dialog.js";
-import type { Progress } from "../onboarding/menu/forms.js";
-import { MenuModel } from "../onboarding/menu/model.js";
-import type { Screen } from "../onboarding/menu/model.js";
-import type { Outcome } from "../onboarding/menu/progress.js";
 
 export const builtGateway = resolve("packages/pi-peers/gateway/target/debug/pi-gateway");
 
@@ -123,7 +119,7 @@ function scripted(
     return answers.shift();
   }
 
-  const form = options.some((option) => option.startsWith("Mode: "));
+  const form = options.some((option) => option.startsWith("Label: "));
 
   if (form) {
     skipFormless(answers);
@@ -247,18 +243,3 @@ export function nativeParticipants() {
 export const noPins = { catalog: { nix: null, native: null } } satisfies {
   catalog: GatewayCatalog;
 };
-
-export async function consentOutcome(
-  open: (progress: Progress) => Screen,
-  id = "apply",
-): Promise<Outcome | undefined> {
-  let work: Promise<Outcome> | undefined;
-
-  const screen = open((_title, _planned, run) => {
-    work = run(() => undefined);
-  });
-
-  new MenuModel(screen).activate(id);
-
-  return work;
-}

@@ -51,7 +51,7 @@ describe("managed startup remains demand-owned across readonly version/filesyste
   });
   test.each([
     { version: 2, remote: { state: "disabled" } },
-    { version: 1, remote: { state: "unknown" } },
+    { version: 1, remote: { state: "Unknown" } },
     { version: 1, remote: { state: "degraded", reason: "bad reason" } },
   ])("rejects incompatible readonly diagnostic output %j", async (response) => {
     const agent = join(fixture.root, "agent");
@@ -74,6 +74,35 @@ describe("managed startup remains demand-owned across readonly version/filesyste
       "Native diagnostic contract mismatch",
     );
     expect(existsSync(setup.socketPath)).toBe(false);
+  });
+  test.each([
+    [{ state: "retired-certificates" }, "Remote config snapshot: retired-certificates."],
+    [
+      { state: "future-state", reason: "new-reason" },
+      "Remote config snapshot: future-state (new-reason).",
+    ],
+    [
+      { state: "configured", trust: "pinned", publicKey: "c".repeat(64) },
+      "Remote config snapshot: configured (trust pinned).",
+    ],
+  ])("shows a newer or unknown diagnostic state %j instead of failing", async (remote, text) => {
+    const agent = join(fixture.root, "agent");
+    const selected = localPlan(defaultChoices("Diagnose"), setupPaths(agent).socket);
+
+    const setup = await applyLocal(
+      agent,
+      selected,
+      { acquire: async () => fixture.executable },
+      () => undefined,
+    );
+
+    const executable = join(fixture.root, "diagnostic-state-fixture");
+    await writeFile(
+      executable,
+      `#!/bin/sh\nprintf '%s\\n' ${JSON.stringify(JSON.stringify({ version: 1, machineId: "m", remote }))}\n`,
+      { mode: 0o500 },
+    );
+    await expect(diagnoseManaged({ ...setup, executable })).resolves.toContain(text);
   });
   test.each(["abort", "deadline"] as const)(
     "%s during delayed real --version leaves no log or gateway/socket spawn",

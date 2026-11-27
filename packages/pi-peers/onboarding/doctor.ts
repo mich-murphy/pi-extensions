@@ -1,5 +1,4 @@
 import { lstat, stat } from "node:fs/promises";
-import { join } from "node:path";
 import { Schema } from "effect";
 import { errnoCode } from "../../shared/errno.js";
 import {
@@ -16,7 +15,8 @@ import type { StateSet } from "../adapter/locations.js";
 import { readManaged } from "./backend.js";
 import { regularBytes } from "./files.js";
 import { managedSnapshot } from "./managed.js";
-import { decodePairing, parseJson } from "./schema.js";
+import type { ManagedSnapshot } from "./managed.js";
+import { decodeGateway, isPinnedRemote, parseJson } from "./schema.js";
 
 type Inspection =
   | {
@@ -151,7 +151,10 @@ function line(label: string, value: string, level: DoctorLevel = "ok"): DoctorRo
 
 export type DoctorOptions = {
   readonly inMenu?: boolean;
-  readonly liveLinks?: ReadonlyArray<{ readonly machineId: string; readonly state: string }>;
+  readonly liveLinks?: ReadonlyArray<{
+    readonly machineId: string;
+    readonly state: string;
+  }>;
 };
 
 function liveLinkText(options: DoctorOptions): string | undefined {
@@ -313,7 +316,7 @@ function stateSetLines(active: StateSet, ignored: StateSet | undefined): Array<s
   if (active.kind === "legacy") {
     return [
       `State set: legacy (session-communication.json, ${visibleText(active.directory)}, ~/.pi/comms). It keeps working as a whole and is never moved, rewritten or deleted.`,
-      "To migrate: run /peers reset, move the legacy config and directory aside yourself (the directory keeps credentials and revocation records), then /peers setup writes pi-peers.json, pi-peers/ and ~/.pi/pi-peers.",
+      "To migrate: run /peers reset, move the legacy config and directory aside yourself (the directory keeps keys), then /peers setup writes pi-peers.json, pi-peers/ and ~/.pi/pi-peers.",
     ];
   }
 
@@ -389,10 +392,8 @@ async function describeValid(
   }
 
   const remote = await remoteCheck(agentDir, options);
-  const pairing = await pairingCheck(agentDir, options);
   technical.push(
     remote.detail,
-    pairing.detail,
     "Reconnect keeps this session's state and does not reread pi-peers.json. /reload loads changed settings but clears this session's inbox and receipts.",
   );
 
@@ -408,7 +409,6 @@ async function describeValid(
             "warn",
           ),
       ...(remote.row === undefined ? [] : [remote.row]),
-      ...(pairing.row === undefined ? [] : [pairing.row]),
     ],
     technical,
   };
@@ -438,37 +438,18 @@ async function remoteCheck(agentDir: string, options: DoctorOptions = {}): Promi
       };
     }
 
-    const { state, text: detail } = await managedSnapshot(setup);
+    const gateway = await regularBytes(setup.gatewayPath);
+    const remote = gateway === undefined ? undefined : decodeGateway(parseJson(gateway)).remote;
 
-    if (state === "disabled") {
-      return { row: line("Remote link", "None (this machine only)"), detail };
-    }
+    const snapshot =
+      remote === undefined || isPinnedRemote(remote)
+        ? await managedSnapshot(setup)
+        : {
+            state: "retired-certificates",
+            text: "Remote config snapshot: retired-certificates (read from gateway.json; the gateway was not asked).",
+          };
 
-    if (state === "configured") {
-      const live = liveLinkText(options);
-
-      return {
-        row: line(
-          "Remote link",
-          live === undefined
-            ? "Credentials look valid; the live link is not checked here"
-            : `Credentials look valid. ${live}`,
-          live === undefined || options.liveLinks?.every((link) => link.state === "up") === true
-            ? "ok"
-            : "warn",
-        ),
-        detail,
-      };
-    }
-
-    return {
-      row: line(
-        "Remote link",
-        `Credentials need attention. ${SETUP} to renew or pair again; this machine still works locally.`,
-        "error",
-      ),
-      detail,
-    };
+    return snapshotCheck(snapshot, options);
   } catch {
     return {
       row: line(
@@ -482,55 +463,54 @@ async function remoteCheck(agentDir: string, options: DoctorOptions = {}): Promi
   }
 }
 
-const WEEK = 7 * 86_400_000;
+function keyClause(snapshot: ManagedSnapshot): string {
+  return snapshot.publicKey === undefined
+    ? ""
+    : ` This computer's public key: ${snapshot.publicKey}`;
+}
 
-async function pairingCheck(agentDir: string, options: DoctorOptions): Promise<Check> {
+function snapshotCheck(snapshot: ManagedSnapshot, options: DoctorOptions): Check {
   const SETUP = setupStep(options);
+  const detail = `${snapshot.text}${keyClause(snapshot)}`;
 
-  try {
-    const { setupPaths } = await import("./backend.js");
-    const bytes = await regularBytes(join(setupPaths(agentDir).directory, "pairing.json"));
+  if (snapshot.state === "disabled") {
+    return { row: line("Remote link", "None (this machine only)"), detail };
+  }
 
-    if (bytes === undefined) {
-      return { detail: "Pair expiry: no pairing saved by setup." };
-    }
-
-    const value = decodePairing(parseJson(bytes));
-
-    const deadlines = ["rootExpiresAt", "leafExpiresAt", "crlExpiresAt"].flatMap((key) =>
-      typeof value.inspection?.[key] === "number" ? [[key, value.inspection[key]] as const] : [],
-    );
-
-    if (deadlines.length === 0) {
-      return {
-        row: line("Pairing", "No expiry dates saved yet"),
-        detail: "Pair expiry: no saved expiry dates yet (pairing pending).",
-      };
-    }
-
-    const now = Date.now();
-    const detail = `Pair expiry (saved native inspection): ${deadlines.map(([key, time]) => `${key} ${new Date(time * 1000).toISOString()}${time * 1000 - now <= WEEK ? " — renew or re-pair now" : ""}`).join("; ")}. Use /peers setup to renew or import; old revocation records are kept.`;
-    const earliest = Math.min(...deadlines.map(([, time]) => time * 1000));
-    const date = new Date(earliest).toISOString().slice(0, 10);
-
-    if (earliest <= now) {
-      return {
-        row: line("Pairing", `Expired on ${date}. ${SETUP} to renew or pair again.`, "error"),
-        detail,
-      };
-    }
+  if (snapshot.state === "configured") {
+    const live = liveLinkText(options);
+    const up =
+      live === undefined || options.liveLinks?.every((link) => link.state === "up") === true;
 
     return {
-      row:
-        earliest - now <= WEEK
-          ? line("Pairing", `Expires on ${date}. ${SETUP} to renew it soon.`, "warn")
-          : line("Pairing", `Valid until ${date}`),
+      row: line(
+        "Remote link",
+        `Trust: pinned (one public key). ${live === undefined ? "The live link is not checked here." : `${live}.`}${keyClause(snapshot)}`,
+        up ? "ok" : "warn",
+      ),
       detail,
     };
-  } catch {
+  }
+
+  if (snapshot.state === "retired-certificates") {
     return {
-      row: line("Pairing", `Couldn't read the pairing details. ${SETUP} to review them.`, "warn"),
-      detail: "Pair expiry: could not read the saved dates; credentials were kept.",
+      row: line(
+        "Remote link",
+        `This link uses retired certificates. Link again with keys: ${SETUP} › Link a remote computer. This machine still works locally.`,
+        "error",
+      ),
+      detail,
     };
   }
+
+  const reason = snapshot.reason ?? snapshot.state;
+
+  return {
+    row: line(
+      "Remote link",
+      `Needs attention (${reason}). ${SETUP} › Link a remote computer to check the keys; this machine still works locally.${keyClause(snapshot)}`,
+      "error",
+    ),
+    detail,
+  };
 }

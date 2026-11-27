@@ -76,7 +76,9 @@ describe("fresh Review details and the Manage form's edit Apply", () => {
 const PEER = "join-peer";
 const DISCLOSED = `Also changes what ${PEER} may do with this Pi.`;
 
-describe("Manage on a paired setup", () => {
+const PEER_KEY = "3c".repeat(32);
+
+describe("Manage on a key-linked setup", () => {
   let fixture: Awaited<ReturnType<typeof nativeFixture>>;
   let agent: string;
   let client: GatewayClient | undefined;
@@ -106,14 +108,16 @@ describe("Manage on a paired setup", () => {
     vi.stubEnv("HOME", fixture.root);
     agent = join(fixture.root, "creator");
     client = undefined;
+    await setupCommand(agent, dialog(["APPLY"]), activate, supplied());
+    await setupCommand(agent, dialog(["Link a remote computer", "APPLY"]), activate, supplied());
     await setupCommand(
       agent,
       dialog([
-        "Mode=One remote peer",
-        "Trust=Create new pair",
+        "Link a remote computer",
         `Peer machine=${PEER}`,
         "Connection=Listen for peer",
         `Address=${await nativeAddress()}`,
+        `Peer public key=${PEER_KEY}`,
         "APPLY",
       ]),
       activate,
@@ -161,7 +165,7 @@ describe("Manage on a paired setup", () => {
     await setupCommand(agent, ctx, activate, supplied());
     expect(picks).toStrictEqual([]);
     expect(shown[1]?.title).toContain(
-      "Can't change here: the paired computer uses this scope. Re-pair to change it.",
+      "Can't change here: the linked computer uses this scope. Remove the remote link to change it.",
     );
     expect(shown[1]?.title).toContain("Peers › Setup");
     const details = String(shown[2]?.title);

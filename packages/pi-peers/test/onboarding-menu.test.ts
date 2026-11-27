@@ -1,7 +1,6 @@
 import { describe, expect, test, vi } from "vitest";
 import { MenuModel, hint } from "../onboarding/menu/model.js";
 import type { Screen } from "../onboarding/menu/model.js";
-import { remoteDraft } from "../onboarding/menu/remote-form.js";
 import { driveRpc } from "../onboarding/menu/rpc.js";
 import { applyState, editState, manageForm, setupForm } from "../onboarding/menu/setup-form.js";
 import type {
@@ -17,12 +16,10 @@ import { dialog } from "./onboarding-fixtures.js";
 const keys = { confirm: "Enter", cancel: "Esc" };
 
 const draft = (overrides: Partial<SetupDraft> = {}): SetupDraft => ({
-  mode: "local",
   choices: defaultChoices("Menu Host"),
   socket: "/private/owned/s",
   socketRequired: false,
   shared: false,
-  remote: remoteDraft(),
   ...overrides,
 });
 
@@ -268,15 +265,15 @@ describe("Manage form", () => {
     expect(consented).toHaveBeenCalledWith("Reconnect");
     expect(keep).toHaveBeenCalledOnce();
   });
-  test("a paired Machine row is read-only and says why", () => {
+  test("a linked Machine row is read-only and says why", () => {
     const { model } = manageHarness({
-      fixedMachine: "Can't change here: the pair names it.",
+      fixedMachine: "Can't change here: the link names it.",
     });
 
     const machine = row(model.top, "machineId");
     expect(machine).toMatchObject({
       value: "saved-host",
-      description: "Can't change here: the pair names it.",
+      description: "Can't change here: the link names it.",
       activation: { kind: "none" },
     });
     model.activate("machineId");

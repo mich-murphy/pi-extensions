@@ -227,9 +227,13 @@ describe("plain-language doctor report", () => {
     expect(doctorRowText({ label: "Gateway", value: "Socket found", level: "ok" })).toBe(
       "✓ Gateway: Socket found",
     );
-    expect(doctorRowText({ label: "Pairing", value: "Expires soon", level: "warn" })).toBe(
-      "! Pairing: Expires soon",
-    );
+    expect(
+      doctorRowText({
+        label: "Remote link",
+        value: "Needs attention",
+        level: "warn",
+      }),
+    ).toBe("! Remote link: Needs attention");
     expect(doctorRowText({ label: "Config file", value: "Bad", level: "error" })).toBe(
       "✗ Config file: Bad",
     );

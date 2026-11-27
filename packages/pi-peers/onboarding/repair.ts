@@ -22,6 +22,7 @@ import {
   decodeCached,
   decodeManaged,
   decodeGateway,
+  isPinnedRemote,
   parseJson,
 } from "./schema.js";
 
@@ -40,7 +41,7 @@ type Ledger = ReturnType<typeof decodeRepair>;
 
 const json = (value: Schema.Json): string => `${JSON.stringify(value, null, 2)}\n`;
 
-async function inspectOwned(agentDir: string) {
+async function inspectOwned(agentDir: string, requireRemote = false) {
   const paths = setupPaths(agentDir);
   const metadata = await regularBytes(paths.metadata);
 
@@ -97,7 +98,7 @@ async function inspectOwned(agentDir: string) {
     installed,
     record,
     ledger,
-    remote: decodeGateway(parseJson(gateway)).remote !== undefined || pairing !== undefined,
+    remote: requireRemote || isPinnedRemote(decodeGateway(parseJson(gateway)).remote),
   };
 }
 
@@ -184,7 +185,7 @@ const STEPS = [
 ] as const;
 
 const REPAIR_TECHNICAL = (owned: Owned): string =>
-  `Missing, tampered or unsafe old file ${owned.record.executable} is NEVER executed. Only a hash-verified prior helper may receive a bounded read-only --version --json probe to check mandatory capabilities; repair never uses it for gateway, lock, pairing or control operations and never deletes it. Only ${owned.paths.metadata} and ${owned.paths.installed} change, under a verified NEW helper's native lock. Create-only repair-install-* acquisition staging, repair.json resumable ledger and .previous-* metadata backups may remain after interruption. Recheck unchanged configuration/pairing hashes before any metadata mutation. No configuration/key/revocation record rewrite, automatic version policy, runtime replacement or uncertain-send replay. Reconnect is bounded and control-free; an already-running older gateway may reject guarded registration until it exits.`;
+  `Missing, tampered or unsafe old file ${owned.record.executable} is NEVER executed. Only a hash-verified prior helper may receive a bounded read-only --version --json probe to check mandatory capabilities; repair never uses it for gateway, lock, key or control operations and never deletes it. Only ${owned.paths.metadata} and ${owned.paths.installed} change, under a verified NEW helper's native lock. Create-only repair-install-* acquisition staging, repair.json resumable ledger and .previous-* metadata backups may remain after interruption. Recheck unchanged configuration hashes before any metadata mutation. No configuration or key rewrite, automatic version policy, runtime replacement or uncertain-send replay. Reconnect is bounded and control-free; an already-running older gateway may reject guarded registration until it exits.`;
 
 async function repairWork(
   agentDir: string,
@@ -233,8 +234,9 @@ export async function repairRoute(
   agentDir: string,
   acquisition: (remote: boolean) => Promise<Acquisition>,
   reconnect?: Reconnect,
+  requireRemote = false,
 ): Promise<RepairRoute | undefined> {
-  const owned = await inspectOwned(agentDir);
+  const owned = await inspectOwned(agentDir, requireRemote);
 
   if (owned === undefined || (owned.ledger === undefined && (await healthy(owned)))) {
     return undefined;
@@ -255,12 +257,14 @@ export async function repairRoute(
     screen: (progress) =>
       actionForm({
         title: "Setup",
-        note: "The gateway program setup installed is missing, changed or too old. Repair replaces only that program; your settings, keys and this session are kept.",
+        note: requireRemote
+          ? "Linking a remote computer needs a newer gateway program that supports keys. Repair installs a verified one first; your settings, keys and this session are kept."
+          : "The gateway program setup installed is missing, changed or too old. Repair replaces only that program; your settings, keys and this session are kept.",
         details: () =>
           withTechnical(
             [
               "Repair downloads a verified gateway and records it as this setup's program.",
-              "Settings, keys, revocation records and this session are kept. Nothing is restarted.",
+              "Settings, keys and this session are kept. Nothing is restarted.",
             ],
             [route.description, REPAIR_TECHNICAL(owned)],
           ),
