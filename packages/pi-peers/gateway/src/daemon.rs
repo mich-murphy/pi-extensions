@@ -839,7 +839,7 @@ impl Daemon {
                 Some("transit")
             } else if !self
                 .remote_descriptor(origin, &request["from"])
-                .is_some_and(|own| member(own, scope))
+                .is_none_or(|own| member(own, scope))
             {
                 Some("source")
             } else if !self.remote_admits(origin, request, scope) {
@@ -881,10 +881,15 @@ impl Daemon {
                 })
                 .map(|(id, _)| *id)
         } else {
+            // An answer may go to a remote session this node never received in a roster (the
+            // remote holds only `reply` here): it travels to the linked machine, whose gateway
+            // admits it only for a message that session sent this one.
+            let answer = request["message"].get("replyTo").is_some();
             self.destination(origin, target, scope).or_else(|| {
                 self.remote_id().filter(|id| {
                     self.remote_descriptor(*id, target)
                         .is_some_and(|descriptor| member(descriptor, scope))
+                        || (answer && self.linked_machine(*id) == Some(machine))
                 })
             })
         };

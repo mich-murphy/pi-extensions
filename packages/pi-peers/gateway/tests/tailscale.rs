@@ -611,6 +611,124 @@ mod linked {
     }
 
     #[test]
+    fn a_reply_only_remote_without_discover_answers_what_was_sent_to_it_once() {
+        // alpha may discover and push to beta's sessions; beta holds only `reply` on team toward
+        // alpha, so it never receives alpha's sessions in a roster.
+        let beta = beta(
+            Some(&json!([{"scopes":["team","private"],"allow":["discover","push"]}])),
+            &[],
+        );
+        let mut b = beta.connect();
+        let beta_peer = register(&mut b, "beta-session", 1);
+        let mut other = beta.connect();
+        register(&mut other, "beta-other", 2);
+        let alpha = alpha(
+            &json!([{"scopes":["team"],"allow":["reply"]}]),
+            beta.address(),
+        );
+        let mut a = alpha.connect();
+        let alpha_peer = register(&mut a, "alpha-session", 3);
+        let mut observer = alpha.connect();
+        register(&mut observer, "observer", 4);
+        // Both beta sessions registered before the link, so one snapshot holds both.
+        await_peer(&mut observer, 5, &beta_peer);
+        let mut watcher = beta.connect();
+        register(&mut watcher, "watcher", 7);
+        write(
+            &mut watcher,
+            &json!({"v":2,"op":"discover","rid":rid(8),"scopeIds":["team"],"watch":true}),
+        );
+        let snapshot = read(&mut watcher);
+        assert!(
+            snapshot["outcome"]["value"]["peers"]
+                .as_array()
+                .expect("peers")
+                .iter()
+                .all(|descriptor| descriptor["peer"]["machineId"] == "beta"),
+            "beta never sees alpha's sessions: {snapshot}"
+        );
+        let original = rid(1020);
+        let answer = |kind: &str, n: u32, to: &str| json!({"id":rid(n),"kind":kind,"content":"answer","format":"text","replyTo":{"sender":alpha_peer,"messageId":to}});
+        let send_in = |stream: &mut UnixStream, n: u32, scope: &str, message: &Value| {
+            write(
+                stream,
+                &json!({"v":2,"op":"send","rid":rid(n),"to":alpha_peer,"scopeId":scope,"budgetMs":15000,"message":message}),
+            );
+        };
+        send_in(&mut b, 10, "team", &answer("reply", 10, &original));
+        assert_eq!(
+            read(&mut b)["outcome"]["code"],
+            "forbidden",
+            "nothing was sent to beta yet"
+        );
+        send(&mut a, &beta_peer, 20, &request(20));
+        let delivery = read(&mut b);
+        assert_eq!(delivery["message"]["id"], original);
+        assert_eq!(delivery["from"], alpha_peer);
+        write(&mut b, &receipt(&delivery, "none"));
+        assert_eq!(read(&mut a)["outcome"]["tag"], "admitted");
+        for (forger, n, scope, message, case) in [
+            (
+                false,
+                11,
+                "team",
+                answer("reply", 11, &rid(1021)),
+                "unknown messageId",
+            ),
+            (
+                true,
+                12,
+                "team",
+                answer("reply", 12, &original),
+                "wrong from",
+            ),
+            (
+                false,
+                13,
+                "private",
+                answer("reply", 13, &original),
+                "wrong scope",
+            ),
+        ] {
+            let stream = if forger { &mut other } else { &mut b };
+            send_in(stream, n, scope, &message);
+            assert_eq!(read(stream)["outcome"]["code"], "forbidden", "{case}");
+        }
+        for (n, kind) in [(14, "update"), (15, "reply")] {
+            send_in(&mut b, n, "team", &answer(kind, n, &original));
+            let delivered = read(&mut a);
+            assert_eq!(delivered["message"]["kind"], kind);
+            assert_eq!(delivered["from"], beta_peer);
+            write(&mut a, &receipt(&delivered, "verified"));
+            assert_eq!(read(&mut b)["outcome"]["tag"], "admitted", "{kind}");
+        }
+        send_in(&mut b, 16, "team", &answer("reply", 16, &original));
+        assert_eq!(
+            read(&mut b)["outcome"]["code"],
+            "forbidden",
+            "a second reply is refused"
+        );
+        send_in(&mut b, 17, "team", &request(17));
+        assert_eq!(
+            read(&mut b)["outcome"]["code"],
+            "no_route",
+            "a request never leaves beta for a session it was not shown"
+        );
+        let mut disguised = answer("reply", 18, &original);
+        disguised["kind"] = json!("request");
+        send_in(&mut b, 18, "team", &disguised);
+        assert_eq!(
+            read(&mut b)["outcome"]["code"],
+            "forbidden",
+            "alpha never admits a request under reply, even one carrying replyTo"
+        );
+        let audit = alpha.stderr();
+        assert!(audit.contains("\"reason\":\"caps\""), "{audit}");
+        assert!(!audit.contains("answer"), "no content in audit");
+        drop(beta);
+    }
+
+    #[test]
     fn a_link_the_listener_refuses_never_reports_up() {
         let beta = beta(None, &[]);
         let alpha = alpha(
@@ -704,6 +822,17 @@ mod linked {
                     &mut stream,
                     &json!({"v":2,"op":"send","rid":rid(802),"from":from,"to":{"machineId":"beta","sessionId":"none","runtimeNonce":rid(803)},"scopeId":"team","budgetMs":15000,"message":request(804)}),
                 );
+            }
+            if case == 4 {
+                // A sender the remote never advertised (it may hold no discover here) is
+                // answered, not dropped: caps and routing decide.
+                assert_eq!(
+                    answer_to(&mut stream, &rid(802))["outcome"]["code"],
+                    "no_route",
+                    "an unadvertised sender of the linked machine is routed"
+                );
+                assert!(alive(&mut stream), "and the link stays up");
+                continue;
             }
             assert!(
                 closed(&mut stream, Duration::from_secs(3)),

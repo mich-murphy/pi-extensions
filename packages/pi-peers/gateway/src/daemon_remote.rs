@@ -362,7 +362,7 @@ impl Daemon {
             && !self.remote_established()
     }
     /// The identified peer of the active link.
-    fn linked_machine(&self, id: ConnectionId) -> Option<&str> {
+    pub(super) fn linked_machine(&self, id: ConnectionId) -> Option<&str> {
         self.clients
             .get(&id)?
             .remote
@@ -687,11 +687,17 @@ impl Daemon {
                     self.fail(id);
                     return;
                 }
-                let valid_source =
-                    self.remote_descriptor(id, &request["from"])
-                        .is_some_and(|descriptor| {
-                            member(descriptor, request["scopeId"].as_str().unwrap_or(""))
-                        });
+                // An advertised sender must be in the scope. A remote this node never received
+                // a roster from (it holds no discover there) still sends as its own machine;
+                // caps and routing then decide.
+                let valid_source = match self.remote_descriptor(id, &request["from"]) {
+                    Some(descriptor) => {
+                        member(descriptor, request["scopeId"].as_str().unwrap_or(""))
+                    }
+                    None => self
+                        .linked_machine(id)
+                        .is_some_and(|machine| request["from"]["machineId"] == machine),
+                };
                 let duplicate = self.forwards.values().any(|forward| {
                     forward.origin == id && forward.request["rid"] == request["rid"]
                 }) || self
