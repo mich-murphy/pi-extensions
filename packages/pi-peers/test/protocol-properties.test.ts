@@ -1,10 +1,18 @@
 import assert from "node:assert/strict";
 import { Hegel } from "@hegeldev/hegel";
-import { arrays, booleans, integers, oneOf, sampledFrom, text } from "@hegeldev/hegel/generators";
+import {
+  arrays,
+  booleans,
+  integers,
+  oneOf,
+  permutations,
+  sampledFrom,
+  text,
+} from "@hegeldev/hegel/generators";
 import { Schema } from "effect";
 import { describe, test } from "vitest";
 import { propertySettings } from "../../../test-support/hegel-settings";
-import { sameMessage, scopedMessageKey } from "../protocol/identity.js";
+import { sameMessage, scopedMessageKey, stableValue } from "../protocol/identity.js";
 import { decodeJson, ProtocolError } from "../protocol/json.js";
 import { Message } from "../protocol/schema.js";
 import type { BoundaryRole } from "../protocol/wire.js";
@@ -16,6 +24,39 @@ const adversarial = oneOf(
   sampledFrom(["", ",", "][", '"', "\\", '","', String.raw`\"`, "[", "]", "a", "a,b"]),
   text({ maxSize: 4 }),
 );
+
+const objectKey = oneOf(
+  sampledFrom([
+    "é",
+    "é",
+    "Å",
+    "Å",
+    "Å",
+    "a",
+    "A",
+    "B",
+    "_",
+    "-",
+    "a\u0000",
+    "",
+    "￿",
+    "\u{1F600}",
+    "\u{10000}",
+  ]),
+  text({ maxSize: 3 }),
+);
+
+function codeUnitOrder(left: string, right: string): number {
+  return left < right ? -1 : 1;
+}
+
+function keysOf(json: string): Array<string> {
+  return Object.keys(Schema.decodeUnknownSync(Schema.JsonObject)(JSON.parse(json)));
+}
+
+function arrayIndex(key: string): boolean {
+  return /^(?:0|[1-9]\d*)$/u.test(key) && Number(key) < 2 ** 32 - 1;
+}
 
 const codePoint = oneOf(
   integers({ minValue: 0, maxValue: 0x10_ff_ff }),
@@ -305,6 +346,26 @@ describe("Hegel v16 bounded protocol properties", () => {
       ]);
 
       assert.throws(() => decodeJson(body), ProtocolError);
+    })
+      .settings(settings)
+      .runSync();
+  });
+
+  test("stableValue key order is independent of insertion order and locale", () => {
+    new Hegel((tc) => {
+      const keys = tc.draw(arrays(objectKey, { maxSize: 6, unique: true }), "keys");
+      const order = tc.draw(permutations(keys.map((_, index) => index)), "order");
+      const entries = keys.map((key, index): [string, Schema.Json] => [key, { [key]: index }]);
+      const shuffled = order.map((index) => at(entries, index));
+      const forward = JSON.stringify(stableValue(Object.fromEntries(entries)));
+      const backward = JSON.stringify(stableValue(Object.fromEntries(shuffled)));
+      assert.equal(forward, backward);
+      assert.deepEqual(keysOf(forward), [
+        ...keys
+          .filter((key) => arrayIndex(key))
+          .toSorted((left, right) => Number(left) - Number(right)),
+        ...keys.filter((key) => !arrayIndex(key)).toSorted(codeUnitOrder),
+      ]);
     })
       .settings(settings)
       .runSync();
