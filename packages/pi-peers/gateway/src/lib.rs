@@ -2,6 +2,11 @@
 
 pub mod breaker;
 pub mod budget;
+#[expect(
+    dead_code,
+    reason = "link setup reads caps once the Tailscale identity module lands"
+)]
+mod caps;
 pub mod config;
 pub mod daemon;
 mod deadline;

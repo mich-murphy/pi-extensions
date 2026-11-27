@@ -68,7 +68,7 @@ impl fmt::Display for ReadConfigError {
 }
 impl std::error::Error for ReadConfigError {}
 
-fn machine(value: &str) -> bool {
+pub(crate) fn machine(value: &str) -> bool {
     !value.is_empty()
         && value.len() <= 32
         && value.as_bytes()[0].is_ascii_lowercase()
@@ -76,7 +76,7 @@ fn machine(value: &str) -> bool {
             .bytes()
             .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-')
 }
-fn scope(value: &str) -> bool {
+pub(crate) fn scope(value: &str) -> bool {
     !value.is_empty()
         && value.len() <= 64
         && value
