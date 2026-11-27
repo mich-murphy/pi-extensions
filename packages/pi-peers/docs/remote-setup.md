@@ -104,8 +104,15 @@ them or open connections:
 ```
 
 A grant with only `app` opens no network path. The dev machine cannot connect to
-the laptop; it answers over the connection the laptop opened. Both grants are
-needed: each gateway enforces only what arrives from the other side.
+the laptop; it answers over the connection the laptop opened. Each gateway
+enforces only what arrives from the other side, so each direction needs its own
+grant. The listening computer refuses a peer that holds no grant toward it. The
+connecting computer keeps the link without one: the listener may then do nothing
+there, and every message it sends is refused. So a one-way setup needs only the
+grant toward the listener.
+
+`reply` works without `discover`. A machine granted only `reply` in a scope never
+sees your sessions there, but it may answer a session that sent it a message.
 
 Use a dedicated scope that only the sessions you mean to share join. Avoid
 granting the default `local` scope, which every session joins.
