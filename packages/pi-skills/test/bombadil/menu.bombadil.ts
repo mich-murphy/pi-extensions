@@ -178,7 +178,8 @@ const open = actions(() =>
       ],
 );
 
-const NAVIGATE = CharSet.fromLiterals("\u001B[A", "\u001B[B", "j", "k", "\u001B[5~", "\u001B[6~");
+const NAVIGATION_KEYS = ["\u001B[A", "\u001B[B", "\u001B[5~", "\u001B[6~"];
+const NAVIGATE = CharSet.fromLiterals(...NAVIGATION_KEYS, "j", "k");
 const SEARCH = CharSet.fromLiterals(..."abcdeghiklmnoprstuz-".split(""), "漢", "研");
 
 const menuKeys = weighted([
@@ -235,14 +236,21 @@ export const toggleFlips: Formula = always(() => {
     return true;
   }
 
+  const flipped = FLIP.get(row.state);
+
   return next(() => {
     const key = lastKey.current;
     const after = selected(ui.current);
 
-    return (
-      (key !== " " && key !== "\r") ||
-      (after?.name === row.name && after.state === FLIP.get(row.state))
-    );
+    if ((key !== " " && key !== "\r") || (after?.name === row.name && after.state === flipped)) {
+      return true;
+    }
+
+    return next(() => {
+      const state = ui.current?.items.find((item) => item.name === row.name)?.state;
+
+      return !NAVIGATION_KEYS.includes(lastKey.current ?? "") || (state ?? flipped) === flipped;
+    });
   });
 });
 
