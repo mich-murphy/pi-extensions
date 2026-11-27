@@ -6,6 +6,8 @@ import {
   booleans,
   composite,
   integers,
+  just,
+  oneOf,
   sampledFrom,
   text as textGen,
 } from "@hegeldev/hegel/generators";
@@ -436,7 +438,8 @@ const CALL = `${LT}call id="x" tool="mcp__pi__read">{}${LT}/call>`;
 const WILD = [...FRAGMENTS, "{", "}", "```", CALL, '{"type":"toolCall","name":"read"}', " "];
 
 function assertWhitespaceInvariant(tc: TestCase): void {
-  const text = drawText(tc, WILD) + tc.draw(textGen({ maxSize: 20 }));
+  const ending = oneOf(textGen({ maxSize: 20 }), just(`\n${CALL}`));
+  const text = drawText(tc, WILD) + tc.draw(ending);
   const whitespace = tc.draw(arrays(sampledFrom([" ", "\n", "\t", "\r\n"]))).join("");
   assert.equal(endsWithPrintedToolCall(text + whitespace), endsWithPrintedToolCall(text));
 }
