@@ -25,6 +25,23 @@ describe("redact", () => {
     );
   });
 
+  test.each([
+    ["a short value before a semicolon", "password=hunter2;more", `password=${REDACTED}`],
+    [
+      "a short value before a semicolon and newline",
+      " api_key=0000000;\n",
+      ` api_key=${REDACTED};\n`,
+    ],
+    ["a value whose first segment has 8 characters", "token=abcdefgh;ijk", `token=${REDACTED}`],
+    ["a value split by commas", 'secret: "ab,cdefghij"', `secret: "${REDACTED}"`],
+  ])("removes all of %s", (_name, input, expected) => {
+    expect(redact(input)).toBe(expected);
+  });
+
+  test("keeps punctuation after an assigned secret", () => {
+    expect(redact("token=abcdefghij, next; then")).toBe(`token=${REDACTED}, next; then`);
+  });
+
   test("removes a private key block", () => {
     const key = "-----BEGIN OPENSSH PRIVATE KEY-----\nabc\ndef\n-----END OPENSSH PRIVATE KEY-----";
     expect(redact(`before ${key} after`)).toBe(`before ${REDACTED} after`);
