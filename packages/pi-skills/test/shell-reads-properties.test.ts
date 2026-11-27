@@ -180,6 +180,14 @@ const TOKENS = [
   "#",
 ];
 
+const UNNORMALIZED = ["/a/../b", "//a", "/a/./b/", "/a//b", "/"];
+
+const catAbsolute = composite((tc) => {
+  const before = tc.draw(arrays(sampledFrom(TOKENS), { maxSize: 6 })).join(" ");
+
+  return `${before}\ncat ${tc.draw(sampledFrom(UNNORMALIZED))}`;
+});
+
 function inSingleQuotes(script: string): string {
   return `'${script.replaceAll("'", String.raw`'\''`)}'`;
 }
@@ -212,6 +220,7 @@ describe("pathsReadByCommand properties", () => {
           oneOf(
             textGen({ alphabet: SHELL_NOISE, maxSize: 60 }),
             arrays(sampledFrom(TOKENS), { maxSize: 14 }).map((parts) => parts.join(" ")),
+            catAbsolute,
           ),
           "source",
         );

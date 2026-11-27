@@ -127,7 +127,16 @@ const policyDocument = composite((tc) => ({
   repositories: tc.draw(pairs(sampledFrom(PATHS), pairs(sampledFrom(RELATIVE), toggleValue))),
 }));
 
-const document = oneOf<unknown>(json, documentLike, policyDocument);
+const entryToggle = sampledFrom<unknown>(["enabled", "disabled"]);
+const repositoryKey = sampledFrom(["x/SKILL.md", "x/", "./x", "a/./b", "a//b", "__proto__"]);
+
+const wellFormedPolicy = composite((tc) => ({
+  version: 7,
+  files: tc.draw(pairs(sampledFrom(["/a/b", "/c"]), entryToggle)),
+  repositories: tc.draw(pairs(sampledFrom(["/a/b", "/r"]), pairs(repositoryKey, entryToggle))),
+}));
+
+const document = oneOf<unknown>(json, documentLike, policyDocument, wellFormedPolicy);
 
 const stats = { ok: 0, err: 0 };
 

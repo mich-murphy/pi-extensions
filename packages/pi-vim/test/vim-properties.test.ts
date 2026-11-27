@@ -1,7 +1,14 @@
 import assert from "node:assert/strict";
 import type { CustomEditor } from "@earendil-works/pi-coding-agent";
 import { setKittyProtocolActive } from "@earendil-works/pi-tui";
-import { arrays, integers, sampledFrom } from "@hegeldev/hegel/generators";
+import {
+  arrays,
+  integers,
+  just,
+  oneOf,
+  sampledFrom,
+  text as textGen,
+} from "@hegeldev/hegel/generators";
 import { afterEach, describe, test } from "vitest";
 import {
   assertHegel,
@@ -217,6 +224,31 @@ function trackUndo(
   return changed ? { restored: before.text, remaining: undosNeeded(token, before) } : undefined;
 }
 
+function assertDeleteWord(keyboard: Keyboard, line: string, col: number): void {
+  setKittyProtocolActive(keyboard.kittyProtocol);
+  const editor = createEditor();
+  editor.setText(line);
+  editor.handleInput(keyboard.escape);
+
+  for (const token of ["0", ...Array.from({ length: col }, () => "l")]) {
+    send(editor, keyboard, token);
+  }
+
+  assert.equal(editor.getCursor().col, col, "cursor placed");
+  let end = col;
+
+  while (line.charAt(end) === " ") {
+    end += 1;
+  }
+
+  while (end < line.length && line.charAt(end) !== " ") {
+    end += 1;
+  }
+
+  send(editor, keyboard, "dw");
+  assert.equal(editor.getText(), line.slice(0, col) + line.slice(end), "dw deletes one word");
+}
+
 function runTrace(
   keyboard: Keyboard,
   lines: ReadonlyArray<ReadonlyArray<string>>,
@@ -251,9 +283,18 @@ describe.each(KEYBOARDS)("vimEditor properties with a $name keyboard", (keyboard
         "lines",
       );
 
-      const up = tc.draw(integers({ minValue: 0, maxValue: lines.length - 1 }), "up");
+      const anyLine = integers({ minValue: 0, maxValue: lines.length - 1 });
+      const up = tc.draw(oneOf(just(0), anyLine, anyLine), "up");
       const tokens = tc.draw(arrays(sampledFrom(TOKENS), { maxSize: 20 }), "tokens");
       runTrace(keyboard, lines, [...Array.from({ length: up }, () => "k"), ...tokens]);
+    });
+  });
+
+  test("dw deletes up to the next word start", { timeout: propertyTimeout(30_000) }, () => {
+    assertHegel(propertySettings(), (tc) => {
+      const line = tc.draw(textGen({ alphabet: "ab ", minSize: 1, maxSize: 12 }), "line");
+      const col = tc.draw(integers({ minValue: 0, maxValue: line.length - 1 }), "col");
+      assertDeleteWord(keyboard, line, col);
     });
   });
 });
