@@ -63,12 +63,30 @@ jobs:
         run: |
           export CARGO_TARGET_DIR="$RUNNER_TEMP/gateway-target"
           channel=$(python3 -c 'import pathlib,tomllib; print(tomllib.loads(pathlib.Path("packages/pi-peers/gateway/rust-toolchain.toml").read_text())["toolchain"]["channel"])')
-          rustup toolchain install "$channel" --profile minimal
-          # Native runner linker/libc, NOT Nix's store-only runtime closure.
-          cargo +"$channel" build --locked --release \
-            --manifest-path packages/pi-peers/gateway/Cargo.toml --bin pi-gateway
-          mkdir -p staged
-          rustc +"$channel" -vV > staged/rustc.txt
+          mkdir -p staged "$CARGO_TARGET_DIR"
+          if [ "$(uname -s)" = Linux ]; then
+            # Linux builds link against Debian bookworm's glibc 2.36, not the runner's 2.39.
+            # Rust std's Command::spawn references pidfd_spawnp/pidfd_getpid weakly, but a
+            # glibc 2.39 link still records GLIBC_2.39 as required and older loaders refuse it.
+            # Multi-platform rust:1.98-slim-bookworm, pinned by digest.
+            image='rust@sha256:ff521445a372125ed4f76e1453a1f8098f2d05332d1601d30db1c1f62757e730'
+            docker run --rm -e CARGO_BUILD_JOBS -e CHANNEL="$channel" -e OWNER="$(id -u):$(id -g)" \
+              -e CARGO_TARGET_DIR=/target -v "$PWD:/work:ro" -v "$CARGO_TARGET_DIR:/target" -w /work \
+              "$image" sh -ec '
+                rustup toolchain install "$CHANNEL" --profile minimal
+                cargo +"$CHANNEL" build --locked --release \
+                  --manifest-path packages/pi-peers/gateway/Cargo.toml --bin pi-gateway
+                rustc +"$CHANNEL" -vV > /target/rustc.txt
+                getconf GNU_LIBC_VERSION >> /target/rustc.txt
+                chown -R "$OWNER" /target'
+            mv "$CARGO_TARGET_DIR/rustc.txt" staged/rustc.txt
+          else
+            rustup toolchain install "$channel" --profile minimal
+            # Native runner linker/libc, NOT Nix's store-only runtime closure.
+            cargo +"$channel" build --locked --release \
+              --manifest-path packages/pi-peers/gateway/Cargo.toml --bin pi-gateway
+            rustc +"$channel" -vV > staged/rustc.txt
+          fi
           file "$CARGO_TARGET_DIR/release/pi-gateway" > staged/linkage.txt
           if [ "$(uname -s)" = Darwin ]; then
             otool -L "$CARGO_TARGET_DIR/release/pi-gateway" >> staged/linkage.txt
