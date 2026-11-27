@@ -336,10 +336,10 @@ describe("peers_take", () => {
     const result = await fx.call("peers_take");
     expect(result.content[0]?.text).toBe(
       [
-        `from ${handle} · request · id m-1111`,
+        `from ${handle} on machine beta (remote) · request · id m-1111`,
         "first",
         "",
-        `from ${handle} · reply · id m-2222 · reply to m-3333 · status completed`,
+        `from ${handle} on machine beta (remote) · reply · id m-2222 · reply to m-3333 · status completed`,
         "second",
       ].join("\n"),
     );
@@ -383,7 +383,9 @@ describe("peers_take waitSeconds", () => {
       message: { id: "1".repeat(32), kind: "update", content: "done", format: "text" },
     });
     const result = await fx.call("peers_take", { waitSeconds: 30 });
-    expect(textOf(result)).toBe(`from ${handle} · update · id m-1111\ndone`);
+    expect(textOf(result)).toBe(
+      `from ${handle} on machine beta (remote) · update · id m-1111\ndone`,
+    );
   });
 });
 

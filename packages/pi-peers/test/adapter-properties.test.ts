@@ -151,7 +151,10 @@ function baseConfiguration(allowed: boolean) {
     socketPath: "/tmp/gateway.sock",
     scopeIds: ["team"],
     label: "test",
-    policies: [{ machineId: "beta", scopeId: "team", permissions: allowed ? ["push"] : [] }],
+    policies: [
+      { machineId: "alpha", scopeId: "team", permissions: allowed ? ["push"] : [] },
+      { machineId: "beta", scopeId: "team", permissions: [] },
+    ],
   };
 }
 
@@ -173,11 +176,14 @@ function injectControl(allowed: boolean, field: number, injected: string) {
 function assertPermissionDecision(allowed: boolean, code: number, kind: number): void {
   const injected = controlSequence(code, kind);
   const config = decodeConfiguration(baseConfiguration(allowed));
-  assert.equal(permits(config, "beta", "team", "push"), allowed);
-  assert.equal(permits(config, "beta", "team", "discover"), false);
+  assert.equal(permits(config, "alpha", "team", "push"), allowed);
+  assert.equal(permits(config, "alpha", "team", "discover"), false);
+  assert.equal(permits(config, "alpha", "other", "push"), false);
+  assert.equal(permits(config, "alpha", `team${injected}`, "push"), false);
+  assert.equal(permits(config, "beta", "team", "push"), true);
+  assert.equal(permits(config, "gamma", "team", "discover"), true);
   assert.equal(permits(config, "beta", "other", "push"), false);
-  assert.equal(permits(config, "gamma", "team", "push"), false);
-  assert.equal(permits(config, `beta${injected}`, "team", "push"), false);
+  assert.equal(permits(config, `alpha${injected}`, "team", "push"), true);
   assert.equal(permits(config, "beta", `team${injected}`, "push"), false);
   assert.equal(permits(config, `beta${injected}`, `team${injected}`, "push"), false);
 }
@@ -282,7 +288,7 @@ function assertRenderedBounds(
 }
 
 describe("Hegel adapter policy and rendering properties", () => {
-  test("permission decisions are exact whatever control content names carry", () => {
+  test("own-machine grants decide local sessions and other machines defer to the destination, whatever control content names carry", () => {
     new Hegel((tc) => {
       const allowed = tc.draw(booleans(), "allowed");
       const code = tc.draw(sampledFrom(controlCodes), "control");

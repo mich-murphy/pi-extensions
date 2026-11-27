@@ -1,10 +1,7 @@
-import { once } from "node:events";
-import { copyFile, chmod, mkdtemp, realpath, lstat } from "node:fs/promises";
-import { createServer } from "node:net";
+import { copyFile, chmod, mkdir, mkdtemp, realpath, lstat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
-import { Schema } from "effect";
 import { vi } from "vitest";
 import { errnoCode } from "../../shared/errno.js";
 import type { GatewayCatalog } from "../onboarding/catalog.js";
@@ -19,6 +16,94 @@ export async function nativeFixture() {
   await chmod(executable, 0o500);
 
   return { root, executable };
+}
+
+const TAILSCALE_GATEWAY_VERSION = JSON.stringify({
+  name: "pi-gateway",
+  version: "0.4.0",
+  wireVersions: [2],
+  capabilities: [
+    "managed-on-demand-v1",
+    "gateway-control-v1",
+    "setup-lock-v1",
+    "config-generation-v1",
+    "tailscale-identity-v1",
+  ],
+});
+
+export const TAILNET = {
+  self: ["100.64.0.1", "fd7a:115c:a1e0::1"],
+  other: "dev-01",
+  otherAddress: "100.64.0.2",
+  ipOnly: "build-box",
+  ipOnlyAddress: "100.64.0.3",
+  unknownAddress: "100.64.0.9",
+} as const;
+
+function whois(name: string, address: string, stableId: string): string {
+  return JSON.stringify({
+    Node: {
+      ID: 7,
+      StableID: stableId,
+      Name: `${name.toUpperCase()}.tail0000.ts.net.`,
+      Addresses: [`${address}/32`],
+      Tags: ["tag:dev"],
+    },
+    UserProfile: { LoginName: "tagged-devices" },
+    CapMap: {},
+  });
+}
+
+function gatewayWrapper(real: string, diagnose: string): string {
+  return [
+    "#!/bin/sh",
+    `if [ "$1" = "--version" ] && [ "$2" = "--json" ]; then echo '${TAILSCALE_GATEWAY_VERSION}'; exit 0; fi`,
+    `if [ "$1" = "--diagnose" ] && [ -f ${JSON.stringify(diagnose)} ]; then cat ${JSON.stringify(diagnose)}; exit 0; fi`,
+    `exec ${JSON.stringify(real)} "$@"`,
+    "",
+  ].join("\n");
+}
+
+function fakeTailscale(machine: string, backend: string): string {
+  const status = JSON.stringify({
+    BackendState: backend,
+    Self: { DNSName: `${machine}.tail0000.ts.net.`, TailscaleIPs: TAILNET.self },
+  });
+
+  return [
+    "#!/bin/sh",
+    `if [ "$1" = "status" ]; then echo '${status}'; exit 0; fi`,
+    `if [ "$1" = "ip" ] && [ "$3" = "${TAILNET.other}" ]; then echo ${TAILNET.otherAddress}; exit 0; fi`,
+    `if [ "$1" = "ip" ] && [ "$3" = "${TAILNET.other}.tail0000.ts.net." ]; then echo ${TAILNET.otherAddress}; exit 0; fi`,
+    `if [ "$1" = "whois" ] && [ "$2" = "--json" ] && [ "$3" = "${TAILNET.otherAddress}" ]; then echo '${whois(TAILNET.other, TAILNET.otherAddress, "nDev")}'; exit 0; fi`,
+    `if [ "$1" = "whois" ] && [ "$2" = "--json" ] && [ "$3" = "${TAILNET.ipOnlyAddress}" ]; then echo '${whois(TAILNET.ipOnly, TAILNET.ipOnlyAddress, "nBuild")}'; exit 0; fi`,
+    `if [ "$1" = "whois" ]; then echo 'peer not found' >&2; exit 1; fi`,
+    "echo 'no such host' >&2",
+    "exit 1",
+    "",
+  ].join("\n");
+}
+
+export async function tailscaleGateway(native: { root: string; executable: string }) {
+  const real = join(native.root, "pi-gateway-built");
+  await copyFile(native.executable, real);
+  await chmod(real, 0o500);
+  const diagnose = join(native.root, "diagnose.json");
+  const executable = join(native.root, "pi-gateway-tailscale");
+  await writeFile(executable, gatewayWrapper(real, diagnose), { mode: 0o500 });
+
+  return { executable, diagnose };
+}
+
+export async function tailscaleFixture(machine: string, backend = "Running") {
+  const native = await nativeFixture();
+  const gateway = await tailscaleGateway(native);
+  const bin = join(native.root, "tailscale-bin");
+  await mkdir(bin, { mode: 0o700 });
+  const tailscale = join(bin, "tailscale");
+  await writeFile(tailscale, fakeTailscale(machine, backend), { mode: 0o700 });
+
+  return { root: native.root, ...gateway, tailscale };
 }
 
 const LOCAL = "Local only — no remote connections (recommended)";
@@ -163,26 +248,6 @@ export async function nativeUntil(check: () => Promise<boolean>, deadlineMs = 50
 
     await delay(25);
   }
-}
-
-const isAddress = Schema.is(Schema.Struct({ address: Schema.String, port: Schema.Number }));
-
-export async function nativeAddress(): Promise<string> {
-  const server = createServer();
-  const listening = once(server, "listening");
-  server.listen(0, "127.0.0.1");
-  await listening;
-  const address = server.address();
-
-  if (address === null || !isAddress(address)) {
-    throw new Error("No native fixture port");
-  }
-
-  const closed = once(server, "close");
-  server.close();
-  await closed;
-
-  return `127.0.0.1:${address.port}`;
 }
 
 export async function nativeIncarnation(path: string): Promise<string | undefined> {

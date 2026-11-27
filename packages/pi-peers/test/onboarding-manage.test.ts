@@ -2,15 +2,15 @@ import { existsSync } from "node:fs";
 import { readFile, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
-import { GatewayClient } from "../adapter/client.js";
-import { decodeConfiguration, loadConfiguration } from "../adapter/config.js";
-import { freshId } from "../adapter/transport.js";
-import { reloadManagedLauncher, setupPaths } from "../onboarding/backend.js";
+import { loadConfiguration } from "../adapter/config.js";
+import { applyLocal, setupPaths } from "../onboarding/backend.js";
 import type { DialogContext } from "../onboarding/dialog.js";
+import { defaultChoices, localPlan } from "../onboarding/plan.js";
+import { linkedPlan } from "../onboarding/remote.js";
 import { decodeGateway, parseJson } from "../onboarding/schema.js";
 import { setupCommand } from "../onboarding/setup.js";
 import type { ActivatePlan } from "../onboarding/upgrade.js";
-import { dialog, nativeAddress, nativeFixture, nativeUntil } from "./onboarding-fixtures.js";
+import { dialog, nativeFixture, nativeUntil, tailscaleFixture } from "./onboarding-fixtures.js";
 
 describe("fresh Review details and the Manage form's edit Apply", () => {
   let fixture: Awaited<ReturnType<typeof nativeFixture>>;
@@ -73,29 +73,9 @@ describe("fresh Review details and the Manage form's edit Apply", () => {
   });
 });
 
-const PEER = "join-peer";
-const DISCLOSED = `Also changes what ${PEER} may do with this Pi.`;
-
-const PEER_KEY = "3c".repeat(32);
-
-describe("Manage on a key-linked setup", () => {
-  let fixture: Awaited<ReturnType<typeof nativeFixture>>;
+describe("Manage on a Tailscale-linked setup", () => {
+  let fixture: Awaited<ReturnType<typeof tailscaleFixture>>;
   let agent: string;
-  let client: GatewayClient | undefined;
-
-  const activate: ActivatePlan = async (plan, setup) => {
-    client?.close();
-    client = new GatewayClient({
-      config: plan.adapter,
-      peer: { machineId: plan.adapter.machineId, sessionId: freshId(), runtimeNonce: freshId() },
-      incoming: () => {
-        throw new Error("Unexpected authored request");
-      },
-      statusChanged: () => undefined,
-      ensureGateway: reloadManagedLauncher(agent, plan.adapter, setup),
-    });
-    await client.reconnect();
-  };
 
   const supplied = () => ({
     backend: { acquire: async () => fixture.executable },
@@ -104,36 +84,23 @@ describe("Manage on a key-linked setup", () => {
 
   const gateway = async () => decodeGateway(parseJson(await readFile(setupPaths(agent).gateway)));
   beforeEach(async () => {
-    fixture = await nativeFixture();
+    fixture = await tailscaleFixture("laptop");
     vi.stubEnv("HOME", fixture.root);
     agent = join(fixture.root, "creator");
-    client = undefined;
-    await setupCommand(agent, dialog(["APPLY"]), activate, supplied());
-    await setupCommand(agent, dialog(["Link a remote computer", "APPLY"]), activate, supplied());
-    await setupCommand(
-      agent,
-      dialog([
-        "Link a remote computer",
-        `Peer machine=${PEER}`,
-        "Connection=Listen for peer",
-        `Address=${await nativeAddress()}`,
-        `Peer public key=${PEER_KEY}`,
-        "APPLY",
-      ]),
-      activate,
-      supplied(),
-    );
+    const plan = localPlan(defaultChoices("laptop"), setupPaths(agent).socket);
+    const linked = linkedPlan(plan, { mode: "listen", address: "100.64.0.1:7443" });
+    await applyLocal(agent, linked, supplied().backend, () => undefined);
   });
   afterEach(async () => {
-    client?.close();
-    await nativeUntil(async () => !existsSync(setupPaths(agent).socket));
     vi.unstubAllEnvs();
     await rm(fixture.root, { recursive: true, force: true });
   });
 
-  test("Scope is read-only; a Permissions edit changes the peer's grants exactly as disclosed", async () => {
+  test("Scope and Machine are read-only; a Permissions edit changes only own-machine grants and keeps the link", async () => {
     const before = await gateway();
-    expect(before.remote).toBeDefined();
+    expect(before.remote).toStrictEqual({
+      endpoint: { mode: "listen", address: "100.64.0.1:7443" },
+    });
 
     const picks = [
       "Scope: local",
@@ -162,32 +129,27 @@ describe("Manage on a key-linked setup", () => {
       },
     };
 
+    const activate = vi.fn<ActivatePlan>();
     await setupCommand(agent, ctx, activate, supplied());
     expect(picks).toStrictEqual([]);
+    expect(shown[0]?.title).toContain("linked over Tailscale (listening on 100.64.0.1:7443)");
     expect(shown[1]?.title).toContain(
-      "Can't change here: the linked computer uses this scope. Remove the remote link to change it.",
+      "Can't change here: your tailnet policy grants name this scope. Remove the remote link to change it.",
     );
-    expect(shown[1]?.title).toContain("Peers › Setup");
     const details = String(shown[2]?.title);
     expect(details).toContain("Peers › Setup › Details");
-    expect(details).toContain(DISCLOSED);
-    expect(details).not.toContain("reviewed below");
+    expect(details).toContain("Your tailnet policy, not these permissions, decides");
     expect(ctx.ui.notify).toHaveBeenCalledWith(
-      expect.stringContaining("✓ Settings changed — connected as"),
+      expect.stringContaining("✓ Settings changed — connected as laptop"),
       "info",
     );
+    expect(activate).toHaveBeenCalledOnce();
 
     const after = await gateway();
-    const kept = ["discover"];
-    expect(after.policies.filter((policy) => policy.machineId === PEER)).toStrictEqual([
-      { machineId: PEER, scopeId: "local", permissions: kept, direction: "outgoing" },
-      { machineId: PEER, scopeId: "local", permissions: kept, direction: "incoming" },
+    expect(after.policies).toStrictEqual([
+      { machineId: "laptop", scopeId: "local", permissions: ["discover"] },
     ]);
     expect(after.remote).toStrictEqual(before.remote);
     expect(after.scopeIds).toStrictEqual(before.scopeIds);
-    const adapter = decodeConfiguration(parseJson(await readFile(setupPaths(agent).adapter)));
-    expect(adapter.policies.filter((policy) => policy.machineId === PEER)).toStrictEqual([
-      { machineId: PEER, scopeId: "local", permissions: kept },
-    ]);
   });
 });

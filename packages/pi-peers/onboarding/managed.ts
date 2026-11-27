@@ -26,14 +26,26 @@ export type ManagedSetup = {
   socketPath: string;
 };
 
+export type RemoteGrant = { readonly scope: string; readonly actions: ReadonlyArray<string> };
+
 export type ManagedSnapshot = {
   readonly state: string;
   readonly reason?: string;
-  readonly publicKey?: string;
+  readonly endpoint?: { readonly mode: string; readonly address: string };
+  readonly self?: string;
+  readonly peer?: {
+    readonly name: string;
+    readonly stableId: string;
+    readonly tags: ReadonlyArray<string>;
+    readonly allow: ReadonlyArray<RemoteGrant>;
+  };
   readonly text: string;
 };
 
 const word = Schema.String.check(Schema.isPattern(/^[a-z-]{1,64}$/u));
+const name = Schema.String.check(Schema.isPattern(/^[A-Za-z0-9._-]{1,253}$/u));
+const short = Schema.String.check(Schema.isPattern(/^[A-Za-z0-9_.:[\]-]{1,64}$/u));
+const tag = Schema.String.check(Schema.isPattern(/^tag:[A-Za-z0-9-]{1,64}$/u));
 
 const isNativeSnapshot = Schema.is(
   Schema.Struct({
@@ -42,7 +54,16 @@ const isNativeSnapshot = Schema.is(
       state: word,
       reason: Schema.optionalKey(word),
       trust: Schema.optionalKey(word),
-      publicKey: Schema.optionalKey(Schema.String.check(Schema.isPattern(/^[a-f0-9]{64}$/u))),
+      endpoint: Schema.optionalKey(Schema.Struct({ mode: word, address: short })),
+      self: Schema.optionalKey(Schema.Struct({ name })),
+      peer: Schema.optionalKey(
+        Schema.Struct({
+          name,
+          stableId: short,
+          tags: Schema.Array(tag),
+          allow: Schema.Array(Schema.Struct({ scope: short, actions: Schema.Array(word) })),
+        }),
+      ),
     }),
   }),
 );
@@ -60,7 +81,7 @@ export async function managedSnapshot(setup: ManagedSetup): Promise<ManagedSnaps
     throw new Error("Native diagnostic contract mismatch");
   }
 
-  const { state, reason, trust, publicKey } = value.remote;
+  const { state, reason, trust, endpoint, self, peer } = value.remote;
   const extra = [reason, trust === undefined ? undefined : `trust ${trust}`].filter(
     (part) => part !== undefined,
   );
@@ -74,8 +95,21 @@ export async function managedSnapshot(setup: ManagedSetup): Promise<ManagedSnaps
     snapshot.reason = reason;
   }
 
-  if (publicKey !== undefined) {
-    snapshot.publicKey = publicKey;
+  if (endpoint !== undefined) {
+    snapshot.endpoint = endpoint;
+  }
+
+  if (self !== undefined) {
+    snapshot.self = self.name;
+  }
+
+  if (peer !== undefined) {
+    snapshot.peer = {
+      name: peer.name,
+      stableId: peer.stableId,
+      tags: peer.tags,
+      allow: peer.allow,
+    };
   }
 
   return snapshot;

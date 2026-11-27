@@ -164,6 +164,7 @@ export type Supplied = {
   backend: SetupBackend;
   description: string;
   restart?: (setup: ManagedSetup) => Promise<"acknowledged" | "uncertain">;
+  tailscale?: string;
 };
 
 type SetupState = Awaited<ReturnType<typeof inspectSetup>>;
@@ -280,6 +281,7 @@ async function existingRoute(
     reconnect,
     supplied?.restart ?? requestManagedRestart,
     upgrade?.screen,
+    supplied?.tailscale,
   );
 
   if (screen !== undefined) {

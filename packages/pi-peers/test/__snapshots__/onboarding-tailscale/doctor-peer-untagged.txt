@@ -1,0 +1,1 @@
+✓ Remote link: Tailscale: this computer is laptop. Connecting to 100.64.0.2:7443. Peer desk (StableID nDesk7CNTRL, no tags) may discover in local; push, reply in work here. The live link is not checked here.

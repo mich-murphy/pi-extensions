@@ -18,7 +18,7 @@ type Policy = {
   machineId: string;
   scopeId: string;
   permissions: Array<string>;
-  direction: "outgoing" | "incoming";
+  direction?: "outgoing" | "incoming";
 };
 
 function drawPolicies(tc: TestCase): Array<Policy> {

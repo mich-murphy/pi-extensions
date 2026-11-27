@@ -1,7 +1,7 @@
 import { decodeConfiguration, SOCKET_PATH_MAX_BYTES, visibleText } from "../adapter/config.js";
 import type { Configuration, Permission } from "../adapter/config.js";
 import { decodeGateway, parseJson } from "./schema.js";
-import type { GatewayRemote } from "./schema.js";
+import type { GatewayConfig } from "./schema.js";
 
 export const permissions: ReadonlyArray<Permission> = ["discover", "push"];
 
@@ -21,18 +21,7 @@ export type LocalChoices = {
 export type LocalPlan = {
   readonly choices: LocalChoices;
   readonly adapter: Configuration;
-  readonly gateway: {
-    readonly machineId: string;
-    readonly socketPath: string;
-    readonly remote?: GatewayRemote;
-    readonly scopeIds: ReadonlyArray<string>;
-    readonly policies: ReadonlyArray<{
-      readonly machineId: string;
-      readonly scopeId: string;
-      readonly permissions: ReadonlyArray<Permission>;
-      readonly direction: "outgoing" | "incoming";
-    }>;
-  };
+  readonly gateway: GatewayConfig;
 };
 
 function suggestedMachineId(hostname: string): string {
@@ -98,7 +87,6 @@ export function localPlan(choices: LocalChoices, socketPath: string): LocalPlan 
     policies: adapter.policies.map((policy) => ({
       ...policy,
       permissions: [...policy.permissions],
-      direction: "outgoing" as const,
     })),
   };
 
@@ -119,7 +107,7 @@ export function localReview(plan: LocalPlan, remote = false): string {
     `Machine: ${visibleText(plan.adapter.machineId)}; scope: ${visibleText(plan.choices.scopeId)}; label: ${visibleText(plan.adapter.label)}`,
     `Same-machine grants: ${plan.choices.permissions.join(", ") || "none"}`,
     remote
-      ? "Remote: one linked computer, trusted by its pinned public key and granted the same permissions in both directions. Scope is account-wide, not a project boundary."
+      ? "Remote: one linked computer over Tailscale. Your tailnet policy decides what it may do here; these grants cover only sessions on this computer. Scope is account-wide, not a project boundary."
       : "Remote: none; no TCP listener. Scope is account-wide, not a project boundary.",
     consent,
     lifetime,

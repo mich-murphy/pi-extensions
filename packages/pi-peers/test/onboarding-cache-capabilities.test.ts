@@ -17,7 +17,6 @@ import {
   GATEWAY_LOCAL_SETUP_CAPABILITIES,
   GATEWAY_REMOTE_SETUP_CAPABILITIES,
 } from "../onboarding/catalog.js";
-import { keyPaths } from "../onboarding/keys.js";
 import { defaultChoices, localPlan } from "../onboarding/plan.js";
 import type { LocalPlan } from "../onboarding/plan.js";
 import { linkedPlan } from "../onboarding/remote.js";
@@ -25,22 +24,18 @@ import { repairRoute } from "../onboarding/repair.js";
 import { decodeCached, decodeManaged, parseJson } from "../onboarding/schema.js";
 import { setupCommand } from "../onboarding/setup.js";
 import type { ActivatePlan } from "../onboarding/upgrade.js";
-import { dialog, nativeFixture, nativeUntil, noPins } from "./onboarding-fixtures.js";
+import {
+  dialog,
+  nativeFixture,
+  nativeUntil,
+  noPins,
+  tailscaleGateway,
+} from "./onboarding-fixtures.js";
 
 const local = "Local only — no remote connections (recommended)";
 
-const PEER_KEY = "ab".repeat(32);
-
-function linked(plan: LocalPlan, agent: string): LocalPlan {
-  return linkedPlan(
-    plan,
-    {
-      peerMachineId: "remote-peer",
-      endpoint: { mode: "listen", address: "127.0.0.1:7443" },
-      peerPublicKey: PEER_KEY,
-    },
-    keyPaths(setupPaths(agent).directory).privateKey,
-  );
+function linked(plan: LocalPlan): LocalPlan {
+  return linkedPlan(plan, { mode: "listen", address: "127.0.0.1:7443" });
 }
 
 const without = (capability: string) =>
@@ -153,15 +148,16 @@ describe("capability-incompatible orphan cache: simulated old VERSION only, actu
     await expect(
       reusableExecutable(agent, GATEWAY_REMOTE_SETUP_CAPABILITIES),
     ).resolves.toBeUndefined();
-    expect(GATEWAY_REMOTE_SETUP_CAPABILITIES).toContain("pinned-keys-v1");
+    expect(GATEWAY_REMOTE_SETUP_CAPABILITIES).toContain("tailscale-identity-v1");
     expect(GATEWAY_REMOTE_SETUP_CAPABILITIES).not.toContain("pairing-v1");
     expect(existsSync(marker)).toBe(false);
     await expect(readFile(paths.installed, "utf8")).resolves.toBe(installed);
   });
   test("a linked plan bypasses a LOCAL-only cached helper and uses the actual NEW native lock", async () => {
     const { paths, marker, installed } = await versionOnlyCache(GATEWAY_LOCAL_SETUP_CAPABILITIES);
-    const acquire = vi.fn<SetupBackend["acquire"]>(async () => fixture.executable);
-    await applyLocal(agent, linked(plan(), agent), { acquire }, () => undefined);
+    const { executable } = await tailscaleGateway(fixture);
+    const acquire = vi.fn<SetupBackend["acquire"]>(async () => executable);
+    await applyLocal(agent, linked(plan()), { acquire }, () => undefined);
     expect(acquire).toHaveBeenCalledOnce();
     expect(existsSync(marker)).toBe(false);
     expect(existsSync(join(paths.directory, "pairing.json"))).toBe(false);
@@ -171,16 +167,16 @@ describe("capability-incompatible orphan cache: simulated old VERSION only, actu
     await expect(readFile(join(paths.directory, ...backups), "utf8")).resolves.toBe(installed);
     await resetLocal(agent);
   });
-  test("a NEW helper without pinned keys is refused for a linked plan before native lock or journal", async () => {
+  test("a NEW helper without tailscale-identity-v1 is refused for a linked plan before native lock or journal", async () => {
     const { paths, executable, marker, installed } = await versionOnlyCache(
       GATEWAY_LOCAL_SETUP_CAPABILITIES,
     );
 
     const entries = await readdir(paths.directory);
     const acquire = vi.fn<SetupBackend["acquire"]>(async () => executable);
-    await expect(
-      applyLocal(agent, linked(plan(), agent), { acquire }, () => undefined),
-    ).rejects.toThrow("out of date");
+    await expect(applyLocal(agent, linked(plan()), { acquire }, () => undefined)).rejects.toThrow(
+      "out of date",
+    );
     expect(acquire).toHaveBeenCalledOnce();
     expect(existsSync(marker)).toBe(false);
     await expect(readdir(paths.directory)).resolves.toStrictEqual(entries);
@@ -413,7 +409,7 @@ describe("capability-incompatible orphan cache: simulated old VERSION only, actu
     expect(existsSync(marker)).toBe(false);
     expect(existsSync(lockLog)).toBe(false);
   });
-  test("a local setup whose helper lacks pinned keys is healthy locally but needs an upgrade to link", async () => {
+  test("a local setup whose helper lacks tailscale-identity-v1 is healthy locally but needs an upgrade to link", async () => {
     const { paths, marker, lockLog } = await committedMask(GATEWAY_LOCAL_SETUP_CAPABILITIES);
     const owned = [paths.adapter, paths.gateway, paths.metadata];
     const before = await Promise.all(owned.map(async (path) => readFile(path)));

@@ -61,12 +61,13 @@ function fixture(options: BridgeOptions = {}) {
 const update = { to: beta, scope: "team", message: { kind: "update", content: "hi" } } as const;
 
 describe("peers extension bridge", () => {
-  test("list returns explicit PeerRefs filtered by discover permission", async () => {
+  test("list returns every exported remote PeerRef without a local policy for its machine", async () => {
     await expect(fixture().client.list()).resolves.toMatchObject({
       ok: true,
       peers: [
         { peer: self, scopeId: "team", label: "Me", self: true },
         { peer: beta, scopeId: "team", label: "Beta", self: false },
+        { peer: gamma, scopeId: "team", label: "Gamma", self: false },
       ],
     });
   });

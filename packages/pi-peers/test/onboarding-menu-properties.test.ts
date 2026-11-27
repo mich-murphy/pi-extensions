@@ -149,20 +149,20 @@ function existingScreen(blockedRepair: boolean, events: Array<string>) {
               title: "Link",
               rows: () => [
                 {
-                  id: "create",
-                  label: "Create key",
+                  id: "listen",
+                  label: "Listen here",
                   value: "",
                   activation: {
                     kind: "open" as const,
                     screen: () =>
                       actionForm({
-                        title: "Create key",
+                        title: "Listen here",
                         details: () => ["details"],
                         consent: () => ({
-                          label: "Create key",
+                          label: "Listen here",
                           action: "Apply",
                           gate: { kind: "ready", value: undefined },
-                          description: "Create key",
+                          description: "Listen here",
                           run: effect("create"),
                         }),
                       }),

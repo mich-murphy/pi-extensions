@@ -142,8 +142,12 @@ export function permits(
   scopeId: string,
   action: Permission,
 ): boolean {
+  if (!config.scopeIds.includes(scopeId)) {
+    return false;
+  }
+
   return (
-    config.scopeIds.includes(scopeId) &&
+    machineId !== config.machineId ||
     config.policies.some(
       (policy) =>
         policy.machineId === machineId &&

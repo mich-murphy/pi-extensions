@@ -574,9 +574,15 @@ function takenEntry(session: ToolSession, delivery: TakenDelivery) {
   return entry;
 }
 
-function takenText(entry: ReturnType<typeof takenEntry>): string {
+function senderText(entry: ReturnType<typeof takenEntry>, own: string): string {
+  return entry.sender.machineId === own
+    ? `from ${entry.from}`
+    : `from ${entry.from} on machine ${plainText(entry.sender.machineId)} (remote)`;
+}
+
+function takenText(entry: ReturnType<typeof takenEntry>, own: string): string {
   const header = [
-    `from ${entry.from}`,
+    senderText(entry, own),
     entry.kind,
     `id ${entry.id}`,
     ...(entry.replyTo === undefined ? [] : [`reply to ${entry.replyTo}`]),
@@ -594,7 +600,10 @@ function take(session: ToolSession, limit: number, waited?: number): Shown {
 
   return {
     value: { messages },
-    text: messages.length === 0 ? empty : messages.map((entry) => takenText(entry)).join("\n\n"),
+    text:
+      messages.length === 0
+        ? empty
+        : messages.map((entry) => takenText(entry, session.peer.machineId)).join("\n\n"),
   };
 }
 

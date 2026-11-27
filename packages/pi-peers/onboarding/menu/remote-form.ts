@@ -1,55 +1,45 @@
-import { visibleText } from "../../adapter/config.js";
-import { peerKeyError } from "../keys.js";
-import { addressError, machineError } from "../remote.js";
-import type { RemoteIntent } from "../remote.js";
-import { isPinnedRemote } from "../schema.js";
-import type { GatewayRemote } from "../schema.js";
+import { DEFAULT_PORT, hostError, portError } from "../remote.js";
+import type { Endpoint, RemoteIntent } from "../remote.js";
 import { cycleField, textField, validated } from "./forms.js";
 import type { Gate } from "./forms.js";
 import type { Row } from "./model.js";
 
 export type RemoteDraft = {
-  peer: string;
   mode: "connect" | "listen";
-  address: string;
-  peerKey: string;
+  host: string;
+  port: string;
 };
 
-export function remoteDraft(saved?: GatewayRemote): RemoteDraft {
-  return {
-    peer: saved?.machineId ?? "",
-    mode: saved?.endpoint.mode ?? "connect",
-    address: saved?.endpoint.address ?? "",
-    peerKey: isPinnedRemote(saved) ? saved.peerPublicKey : "",
-  };
+const ADDRESS = /^(?:\[(?<ipv6>[^\]]+)\]|(?<ipv4>[^:]+)):(?<port>\d+)$/u;
+
+export function remoteDraft(saved?: Endpoint): RemoteDraft {
+  const groups = ADDRESS.exec(saved?.address ?? "")?.groups;
+  const port = groups?.port ?? String(DEFAULT_PORT);
+
+  if (saved?.mode === "connect") {
+    return { mode: "connect", host: groups?.ipv6 ?? groups?.ipv4 ?? "", port };
+  }
+
+  return { mode: "listen", host: "", port };
 }
 
-const LISTEN_HELP =
-  "The address this computer listens on. Use its Tailscale IP, like 100.101.102.103:7443, and let only the other computer reach that port.";
+const CONNECTION_HELP =
+  "One computer listens and the other connects. Listen: this computer waits on its own tailnet IP. Connect: this computer dials the other one.";
 
-const CONNECT_HELP =
-  "The other computer's listening address, usually its Tailscale IP, like 100.101.102.103:7443.";
+const HOST_HELP =
+  "The other computer's MagicDNS name, like dev-01, or its tailnet IP. Required to connect; optional when listening. Setup asks Tailscale once, when you link, which computer it is and names it in the grant to add to your tailnet policy.";
 
-export function remoteRows(draft: RemoteDraft, own: string): Array<Row> {
+const PORT_HELP = `The TCP port the listening computer uses. The default is ${String(DEFAULT_PORT)}.`;
+
+export function remoteRows(draft: RemoteDraft): Array<Row> {
   return [
-    textField({
-      id: "peer",
-      label: "Peer machine",
-      description: "The other computer's machine name, exactly as it set it.",
-      placeholder: "peer-machine",
-      get: () => draft.peer,
-      save: validated(machineError, (value) => {
-        draft.peer = value;
-      }),
-    }),
     cycleField({
       id: "connection",
       label: "Connection",
-      description:
-        "One computer listens and the other connects. Connect: this computer dials the peer. Listen: the peer dials this computer.",
+      description: CONNECTION_HELP,
       options: [
-        ["connect", "Connect to peer"],
-        ["listen", "Listen for peer"],
+        ["listen", "Listen on this computer"],
+        ["connect", "Connect to another computer"],
       ],
       get: () => draft.mode,
       set: (value) => {
@@ -57,73 +47,49 @@ export function remoteRows(draft: RemoteDraft, own: string): Array<Row> {
       },
     }),
     textField({
-      id: "address",
-      label: "Address",
-      description: draft.mode === "connect" ? CONNECT_HELP : LISTEN_HELP,
-      placeholder: "IPv4:port or [IPv6]:port",
-      get: () => draft.address,
-      save: validated(addressError, (value) => {
-        draft.address = value;
-      }),
+      id: "host",
+      label: "Other computer",
+      description: HOST_HELP,
+      placeholder: "MagicDNS name or tailnet IP",
+      empty: draft.mode === "connect" ? "Required" : "Optional",
+      get: () => draft.host,
+      save: validated(
+        (value) => (draft.mode === "listen" && value.trim() === "" ? undefined : hostError(value)),
+        (value) => {
+          draft.host = value.trim();
+        },
+      ),
     }),
     textField({
-      id: "peerKey",
-      label: "Peer public key",
-      description:
-        "The public key the other computer shows in Setup › Link a remote computer: 64 characters, 0-9 and a-f.",
-      placeholder: "64 lowercase hex characters",
-      get: () => draft.peerKey,
-      save: (value) => {
-        const error = peerKeyError(value, own);
-
-        return error === undefined
-          ? {
-              apply: () => {
-                draft.peerKey = value.trim();
-              },
-            }
-          : { error };
-      },
+      id: "port",
+      label: "Port",
+      description: PORT_HELP,
+      placeholder: String(DEFAULT_PORT),
+      get: () => draft.port,
+      save: validated(portError, (value) => {
+        draft.port = value.trim();
+      }),
     }),
   ];
 }
 
-export function remoteGate(draft: RemoteDraft, machine: string, own: string): Gate<RemoteIntent> {
-  const absent = (
-    [
-      ["Peer machine", draft.peer],
-      ["Address", draft.address],
-      ["Peer public key", draft.peerKey],
-    ] as const
-  ).find(([, value]) => value === "")?.[0];
-
-  if (absent !== undefined) {
-    return { kind: "missing", reason: absent };
+export function remoteGate(draft: RemoteDraft): Gate<RemoteIntent> {
+  if (draft.mode === "connect" && draft.host === "") {
+    return { kind: "missing", reason: "Other computer" };
   }
 
-  if (draft.peer === machine) {
-    return { kind: "invalid", reason: "the peer must be another computer" };
+  if (draft.port === "") {
+    return { kind: "missing", reason: "Port" };
   }
 
-  const keyError = peerKeyError(draft.peerKey, own);
+  const invalid = (draft.host === "" ? undefined : hostError(draft.host)) ?? portError(draft.port);
 
-  if (keyError !== undefined) {
-    return {
-      kind: "invalid",
-      reason: keyError.replace(/\.$/u, "").toLowerCase(),
-    };
+  if (invalid !== undefined) {
+    return { kind: "invalid", reason: invalid.replace(/\.$/u, "").toLowerCase() };
   }
 
   return {
     kind: "ready",
-    value: {
-      peerMachineId: draft.peer,
-      endpoint: { mode: draft.mode, address: draft.address },
-      peerPublicKey: draft.peerKey,
-    },
+    value: { mode: draft.mode, host: draft.host, port: Number(draft.port) },
   };
-}
-
-export function remoteSummary(intent: RemoteIntent): string {
-  return `${visibleText(intent.peerMachineId)} (${intent.endpoint.mode} ${visibleText(intent.endpoint.address)})`;
 }

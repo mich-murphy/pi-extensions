@@ -39,6 +39,11 @@ const ownershipSchema = Schema.Struct({
 
 const parseJsonString = Schema.decodeUnknownSync(Schema.fromJsonString(Schema.Json));
 
+const tailscaleRemote = Schema.Struct({
+  endpoint,
+  tailscale: Schema.optionalKey(path),
+});
+
 const pinnedRemote = Schema.Struct({
   machineId: machine,
   endpoint,
@@ -57,9 +62,7 @@ const retiredRemote = Schema.Struct({
   revocationState: path,
 });
 
-export type PinnedRemote = typeof pinnedRemote.Type;
-export type GatewayRemote = PinnedRemote | typeof retiredRemote.Type;
-export const isPinnedRemote = Schema.is(pinnedRemote);
+export const isRetiredRemote = Schema.is(Schema.Union([pinnedRemote, retiredRemote]));
 
 const permissions = Schema.Array(Schema.Literals(["discover", "push"]));
 
@@ -72,11 +75,13 @@ const gatewaySchema = Schema.Struct({
       machineId: machine,
       scopeId: text,
       permissions,
-      direction: Schema.Literals(["outgoing", "incoming"]),
+      direction: Schema.optionalKey(Schema.Literals(["outgoing", "incoming"])),
     }),
   ),
-  remote: Schema.optionalKey(Schema.Union([pinnedRemote, retiredRemote])),
+  remote: Schema.optionalKey(Schema.Union([tailscaleRemote, pinnedRemote, retiredRemote])),
 });
+
+export type GatewayConfig = typeof gatewaySchema.Type;
 
 export function parseJson(bytes: Buffer | string): Schema.Json {
   return parseJsonString(bytes.toString());
@@ -91,6 +96,6 @@ const decodeGatewayFields = Schema.decodeUnknownSync(gatewaySchema, {
   onExcessProperty: "error",
 });
 
-export function decodeGateway(value: Schema.Json): typeof gatewaySchema.Type {
+export function decodeGateway(value: Schema.Json): GatewayConfig {
   return decodeGatewayFields(dropRetiredPermissions(value));
 }
