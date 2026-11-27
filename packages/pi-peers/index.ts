@@ -515,8 +515,8 @@ export default function registerCommunication(
       const shown = async (): Promise<void> => {
         state = await loading;
 
-        if (start !== undefined && model.depth === 0 && !model.closed) {
-          model.activate(start);
+        if (start !== undefined) {
+          model.autoOpen(start);
         }
 
         model.refresh();

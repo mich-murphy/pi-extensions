@@ -64,6 +64,7 @@ export class MenuModel {
   private open = true;
   error: string | undefined;
   acted = false;
+  touched = false;
   busy = false;
   onRefresh: (() => void) | undefined;
 
@@ -129,6 +130,12 @@ export class MenuModel {
 
     if (row !== undefined) {
       this.activateRow(row);
+    }
+  }
+
+  autoOpen(id: string): void {
+    if (this.depth === 0 && !this.closed && !this.touched) {
+      this.activate(id);
     }
   }
 
