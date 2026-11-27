@@ -286,9 +286,8 @@ async function linkWork(manage: Manage, intent: RemoteIntent, step: Step): Promi
         facts: [
           ["This computer", visibleText(self.name)],
           ["Endpoint", endpointText(endpoint)],
-          ["Tailnet policy grant", JSON.stringify(grant)],
         ],
-        next: `Add the grant to your tailnet policy so ${visibleText(other)} may discover and message sessions here (see the pi-peers remote setup guide), then link the other computer the same way. Choose Doctor to check the link.`,
+        next: `Add this grant to your tailnet policy so ${visibleText(other)} may use sessions here: ${JSON.stringify(grant)}. Then link the other computer the same way and choose Doctor (see docs/remote-setup.md).`,
       },
     },
     step,

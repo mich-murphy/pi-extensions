@@ -44,6 +44,21 @@ const DEGRADED: Record<Degraded, { readonly problem: string; readonly next: stri
   },
 };
 
+const isDegraded = Schema.is(
+  Schema.Literals([
+    "tailscale-missing",
+    "tailscale-not-running",
+    "tailscale-error",
+    "not-tailnet-address",
+  ]),
+);
+
+export function degradedText(reason: string): string | undefined {
+  return isDegraded(reason)
+    ? `${DEGRADED[reason].problem.replace(/^./u, (first) => first.toUpperCase())}. ${DEGRADED[reason].next}`
+    : undefined;
+}
+
 class TailscaleRefusal extends RefusalError {
   constructor(readonly code: Degraded) {
     super(DEGRADED[code].problem, DEGRADED[code].next);

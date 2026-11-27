@@ -15,8 +15,9 @@ import type { StateSet } from "../adapter/locations.js";
 import { readManaged } from "./backend.js";
 import { regularBytes } from "./files.js";
 import { managedSnapshot } from "./managed.js";
-import type { ManagedSnapshot } from "./managed.js";
+import type { ManagedSnapshot, RemoteGrant } from "./managed.js";
 import { decodeGateway, isRetiredRemote, parseJson } from "./schema.js";
+import { degradedText } from "./tailscale.js";
 
 type Inspection =
   | {
@@ -463,15 +464,39 @@ async function remoteCheck(agentDir: string, options: DoctorOptions = {}): Promi
   }
 }
 
-function keyClause(snapshot: ManagedSnapshot): string {
-  return snapshot.publicKey === undefined
-    ? ""
-    : ` This computer's public key: ${snapshot.publicKey}`;
+function grantText(allow: ReadonlyArray<RemoteGrant>): string {
+  return allow
+    .map((grant) => `${grant.actions.join(", ")} in ${visibleText(grant.scope)}`)
+    .join("; ");
+}
+
+function configuredText(snapshot: ManagedSnapshot, options: DoctorOptions): string {
+  const live = liveLinkText(options);
+  const endpoint = snapshot.endpoint;
+
+  return [
+    `Tailscale: this computer is ${visibleText(snapshot.self ?? "unknown")}`,
+    ...(endpoint === undefined
+      ? []
+      : [
+          endpoint.mode === "listen"
+            ? `Listening on ${visibleText(endpoint.address)}`
+            : `Connecting to ${visibleText(endpoint.address)}`,
+        ]),
+    ...(snapshot.peer === undefined
+      ? []
+      : [
+          snapshot.peer.allow.length === 0
+            ? `${visibleText(snapshot.peer.name)} may do nothing here yet; add a grant for it to your tailnet policy`
+            : `${visibleText(snapshot.peer.name)} may ${grantText(snapshot.peer.allow)} here`,
+        ]),
+    live ?? "The live link is not checked here",
+  ].join(". ");
 }
 
 function snapshotCheck(snapshot: ManagedSnapshot, options: DoctorOptions): Check {
   const SETUP = setupStep(options);
-  const detail = `${snapshot.text}${keyClause(snapshot)}`;
+  const detail = snapshot.text;
 
   if (snapshot.state === "disabled") {
     return { row: line("Remote link", "None (this machine only)"), detail };
@@ -481,12 +506,13 @@ function snapshotCheck(snapshot: ManagedSnapshot, options: DoctorOptions): Check
     const live = liveLinkText(options);
     const up =
       live === undefined || options.liveLinks?.every((link) => link.state === "up") === true;
+    const granted = snapshot.peer === undefined || snapshot.peer.allow.length > 0;
 
     return {
       row: line(
         "Remote link",
-        `Trust: pinned (one public key). ${live === undefined ? "The live link is not checked here." : `${live}.`}${keyClause(snapshot)}`,
-        up ? "ok" : "warn",
+        `${configuredText(snapshot, options)}.`,
+        up && granted ? "ok" : "warn",
       ),
       detail,
     };
@@ -496,7 +522,7 @@ function snapshotCheck(snapshot: ManagedSnapshot, options: DoctorOptions): Check
     return {
       row: line(
         "Remote link",
-        `This link uses retired certificates. Link again with keys: ${SETUP} › Link a remote computer. This machine still works locally.`,
+        `This link uses retired certificates or keys. Link again over Tailscale: ${SETUP} › Link a remote computer. This machine still works locally.`,
         "error",
       ),
       detail,
@@ -504,13 +530,22 @@ function snapshotCheck(snapshot: ManagedSnapshot, options: DoctorOptions): Check
   }
 
   const reason = snapshot.reason ?? snapshot.state;
+  const known = degradedText(reason);
 
   return {
     row: line(
       "Remote link",
-      `Needs attention (${reason}). ${SETUP} › Link a remote computer to check the keys; this machine still works locally.${keyClause(snapshot)}`,
+      known === undefined
+        ? `Needs attention (${visibleText(reason)}). ${SETUP} › Link a remote computer to check it; this machine still works locally.`
+        : `${known}. This machine still works locally.`,
       "error",
     ),
     detail,
   };
+}
+
+export async function remoteStatus(agentDir: string): Promise<string | undefined> {
+  const check = await remoteCheck(agentDir);
+
+  return check.row === undefined ? undefined : doctorRowText(check.row);
 }

@@ -21,7 +21,7 @@ import type { ToolHost } from "./adapter/tools.js";
 import { freshId } from "./adapter/transport.js";
 import { hasResetTarget, readManaged, reloadManagedLauncher } from "./onboarding/backend.js";
 import type { SetupBackend } from "./onboarding/backend.js";
-import { doctor, doctorReport, doctorRowText } from "./onboarding/doctor.js";
+import { doctor, doctorReport, doctorRowText, remoteStatus } from "./onboarding/doctor.js";
 import type { DoctorReport } from "./onboarding/doctor.js";
 import type { ManagedSetup } from "./onboarding/managed.js";
 import type { MenuModel } from "./onboarding/menu/model.js";
@@ -619,7 +619,11 @@ export default function registerCommunication(
         return;
       }
 
-      ctx.ui.notify(statusText(summary()), "info");
+      const remote = await remoteStatus(getAgentDir()).catch(() => undefined);
+      ctx.ui.notify(
+        remote === undefined ? statusText(summary()) : `${statusText(summary())}\n${remote}`,
+        "info",
+      );
     },
   });
 }
