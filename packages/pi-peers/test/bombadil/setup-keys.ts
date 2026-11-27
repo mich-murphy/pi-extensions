@@ -207,23 +207,37 @@ export const noUnreviewedChange: Formula = always(
   () => !(ui.current?.probe ?? "").startsWith("probe:UNREVIEWED-CHANGE"),
 );
 
+const LOADING = "Checking…";
+
+const COMMAND_OPENS_ITS_SCREEN_WHEN_LOADING_ENDS_AFTER_ESCAPE_REACHES_ROOT = [
+  "Peers",
+  "Peers › Setup",
+  "Peers › Reset",
+];
+
+function backFrom(before: Screen): ReadonlyArray<string | null> | undefined {
+  if (before.kind === null || before.path === null || before.depth === 0) {
+    return undefined;
+  }
+
+  if (before.kind === "progress") {
+    return [null, "Peers"];
+  }
+
+  return before.kind === "outcome" ? ["Peers"] : [before.path.slice(0, -1).join(" › ")];
+}
+
+const loadingReport = (before: Screen): boolean =>
+  before.depth === 1 && before.body.some((row) => row.trim() === LOADING);
+
 export const escapeGoesBack: Formula = escapeLandsOn(
   () => ui.current,
   () => lastKey.current,
-  (before) => {
-    if (before.kind === null || before.path === null || before.depth === 0) {
-      return undefined;
-    }
-
-    if (before.kind === "progress") {
-      return [null, "Peers"];
-    }
-
-    return before.kind === "outcome" ? ["Peers"] : [before.path.slice(0, -1).join(" › ")];
-  },
+  (before) =>
+    loadingReport(before)
+      ? COMMAND_OPENS_ITS_SCREEN_WHEN_LOADING_ENDS_AFTER_ESCAPE_REACHES_ROOT
+      : backFrom(before),
 );
-
-const LOADING = "Checking…";
 
 const SETUP_COMMAND_OPENS_SETUP_WHEN_LOADING_ENDS_SO_ESCAPE_MAY_GO_BACK_TO_ROOT = [null, "Peers"];
 
