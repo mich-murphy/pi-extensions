@@ -208,7 +208,9 @@ function checkInnerWordOnBlank(token: string, before: Snapshot, after: Snapshot)
 type PendingUndo = { readonly restored: string; readonly remaining: number };
 
 function undosNeeded(token: string, before: Snapshot): number {
-  return token === "dd" && before.lines.length > 1 ? 2 : 1;
+  const deletesText = (before.lines[before.line] ?? "") !== "";
+
+  return token === "dd" && before.lines.length > 1 && deletesText ? 2 : 1;
 }
 
 function trackUndo(

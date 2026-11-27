@@ -450,9 +450,10 @@ describe("presentation-only session tool rendering", () => {
           }
         }
 
-        const [collapsedCall, collapsedResult] = rendered;
-        assert((collapsedCall?.lines.length ?? 0) <= 12);
-        assert((collapsedResult?.lines.length ?? 0) <= 24);
+        const [callLines = Number.POSITIVE_INFINITY, resultLines = Number.POSITIVE_INFINITY] =
+          rendered.map(({ lines }) => lines.length);
+        assert(callLines <= 12);
+        assert(resultLines <= 24);
       });
     },
   );
