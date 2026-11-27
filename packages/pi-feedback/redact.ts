@@ -13,7 +13,7 @@ const TOKENS: ReadonlyArray<RegExp> = [
 const BEARER = /\b(?<label>Bearer\s+)[A-Za-z0-9._~+/=-]{12,}/giu;
 
 const ASSIGNED =
-  /\b(?<label>\w*(?:api[_-]?key|token|secret|password|passwd)\w*["']?\s*[=:]\s*["']?)[^\s"',;]{8,}/giu;
+  /\b(?<label>\w*(?:api[_-]?key|token|secret|password|passwd)\w*["']?\s*[=:]\s*["']?)(?=[^\s"']{8})[^\s"']*[^\s"',;]/giu;
 
 export function redact(text: string): string {
   let current = text;
