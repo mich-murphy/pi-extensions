@@ -8,6 +8,7 @@ import {
   oneOf,
   sampledFrom,
   text as textGen,
+  tuples,
 } from "@hegeldev/hegel/generators";
 import { afterEach, describe, test } from "vitest";
 import {
@@ -86,6 +87,17 @@ const TOKENS = [
   "\u001B[B",
   "\u0005",
 ];
+
+const EDIT_TOKENS = ["x", "dd", "dw", "diw", "u", "k", "j", "0", "$", "ESC"];
+const tokenGen = oneOf(sampledFrom(TOKENS), sampledFrom(EDIT_TOKENS));
+const UNDO_EDITS = ["x", "dd", "dw", "diw", "D"];
+
+const segmentGen = oneOf(
+  tokenGen.map((token) => [token]),
+  tuples(sampledFrom(UNDO_EDITS), sampledFrom(UNDO_EDITS), just("u")).map((tokens) => [...tokens]),
+);
+
+const charGen = oneOf(sampledFrom(ALPHABET), sampledFrom(["😀", "é", " ", "a"]));
 
 const MOTIONS = new Set(["h", "j", "k", "l", "0", "$", "w", "b"]);
 const EDITS = new Set(["x", "D", "dd", "dw", "diw"]);
@@ -276,7 +288,7 @@ describe.each(KEYBOARDS)("vimEditor properties with a $name keyboard", (keyboard
   test("random key traces keep the editor invariants", { timeout: propertyTimeout(30_000) }, () => {
     assertHegel(propertySettings(), (tc) => {
       const lines = tc.draw(
-        arrays(arrays(sampledFrom(ALPHABET), { maxSize: 12 }), {
+        arrays(arrays(charGen, { maxSize: 12 }), {
           minSize: 1,
           maxSize: 5,
         }),
@@ -285,7 +297,7 @@ describe.each(KEYBOARDS)("vimEditor properties with a $name keyboard", (keyboard
 
       const anyLine = integers({ minValue: 0, maxValue: lines.length - 1 });
       const up = tc.draw(oneOf(just(0), anyLine, anyLine), "up");
-      const tokens = tc.draw(arrays(sampledFrom(TOKENS), { maxSize: 20 }), "tokens");
+      const tokens = tc.draw(arrays(segmentGen, { maxSize: 14 }), "tokens").flat();
       runTrace(keyboard, lines, [...Array.from({ length: up }, () => "k"), ...tokens]);
     });
   });
