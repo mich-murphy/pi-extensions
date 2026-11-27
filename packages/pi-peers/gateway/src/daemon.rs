@@ -65,9 +65,30 @@ struct Remote {
     scopes: Vec<String>,
     /// Who tailscaled says the peer is and what it may do here; its `StableID` is pinned.
     peer: crate::tailscale::Peer,
+    refresh: Refresh,
     /// Interning tables of this link generation; a new link starts empty.
     refs: crate::intern::Refs,
 }
+/// The periodic whois of a linked peer, run as a task so routing never waits on the CLI.
+#[derive(Debug)]
+struct Refresh {
+    due: Instant,
+    failures: u8,
+    running: bool,
+}
+impl Refresh {
+    fn new(now: Instant) -> Self {
+        Self {
+            due: now + remote_routing::REFRESH_EVERY,
+            failures: 0,
+            running: false,
+        }
+    }
+}
+type Refreshed = (
+    ConnectionId,
+    Result<crate::tailscale::Peer, crate::tailscale::Failure>,
+);
 #[derive(Debug)]
 struct Forward {
     origin: ConnectionId,
@@ -92,6 +113,7 @@ pub struct Daemon {
     buffers: Accounting,
     forwards: HashMap<String, Forward>,
     link: Option<Driver>,
+    refreshes: JoinSet<Refreshed>,
     link_view: Option<LinkView>,
     bound_at: Instant,
     events: Events,
@@ -157,6 +179,7 @@ impl Daemon {
             managed: false,
             restart: None,
             link,
+            refreshes: JoinSet::new(),
             link_view: None,
             bound_at: Instant::now(),
             events: Events::default(),
@@ -256,6 +279,9 @@ impl Daemon {
                 }
                 step = remote_progress(self.link.as_mut()) => self.link_step(step?, &events, &mut tasks)?,
                 Some(event) = receive.recv() => self.event(event),
+                Some(joined) = self.refreshes.join_next(), if !self.refreshes.is_empty() => {
+                    if let Ok((id, result)) = joined { self.refreshed(id, result); }
+                }
                 Some(joined) = tasks.join_next(), if !tasks.is_empty() => {
                     match joined {
                         Ok(id) => {
@@ -268,6 +294,7 @@ impl Daemon {
                 }
                 () = transport::next_deadline(deadline) => {
                     self.liveness();
+                    self.refresh_due(Instant::now());
                     let now = Instant::now();
                     let expired: Vec<_> = self.forwards.iter().filter(|(_, forward)| forward.deadline <= now).map(|(rid, _)| rid.clone()).collect();
                     for rid in expired {
@@ -1304,6 +1331,7 @@ mod tests {
             ping: None,
             scopes: vec!["team".to_owned()],
             peer: crate::tailscale::tests_support::peer("beta", &serde_json::json!([])),
+            refresh: Refresh::new(Instant::now()),
             refs: crate::intern::Refs::default(),
         });
         tokio::time::advance(Duration::from_secs(29)).await;
@@ -1364,6 +1392,125 @@ mod tests {
         drop(daemon);
         drop(tasks);
         std::fs::remove_dir_all(directory).expect("remove isolated directory");
+    }
+    fn linked_fixture(
+        name: &str,
+        caps: &Value,
+    ) -> (Daemon, PathBuf, UnixStream, JoinSet<ConnectionId>) {
+        let directory = PathBuf::from("/tmp")
+            .canonicalize()
+            .expect("canonical temporary directory")
+            .join(format!(
+                "gw-{name}-{}",
+                random_id().expect("isolated nonce")
+            ));
+        std::fs::create_dir(&directory).expect("isolated directory");
+        std::fs::set_permissions(&directory, std::fs::Permissions::from_mode(0o700))
+            .expect("private directory");
+        let config = Config::parse(&serde_json::to_vec(&json!({"machineId":"alpha","socketPath":directory.join("s"),"scopeIds":["team","other"],"policies":[]})).expect("fixture encoding")).expect("fixture policy");
+        let mut daemon = Daemon::bind(config).expect("isolated bind");
+        let (stream, peer) = UnixStream::pair().expect("isolated socketpair");
+        let (events, _receive) = mpsc::channel(68);
+        let mut tasks = JoinSet::new();
+        daemon
+            .accept(stream, &events, &mut tasks)
+            .expect("fixture connection");
+        let id = ConnectionId(1);
+        daemon.clients.get_mut(&id).expect("fixture client").remote = Some(Remote {
+            roster: Vec::new(),
+            snapshot_rid: "00000000000000000000000000000001".to_owned(),
+            established: true,
+            last_progress: Instant::now(),
+            ping: None,
+            scopes: vec!["team".to_owned()],
+            peer: crate::tailscale::tests_support::peer("beta", caps),
+            refresh: Refresh::new(Instant::now()),
+            refs: crate::intern::Refs::default(),
+        });
+        (daemon, directory, peer, tasks)
+    }
+
+    #[tokio::test]
+    async fn refresh_applies_new_caps_ends_a_lost_watch_and_closes_on_revocation() {
+        let caps = json!([{"scopes":["team"],"allow":["discover","push"]}]);
+        let id = ConnectionId(1);
+        let peer = |caps: &Value| crate::tailscale::tests_support::peer("beta", caps);
+        let (mut daemon, directory, mut stream, tasks) = linked_fixture("refresh", &caps);
+        daemon.export(id, &json!({"v":2,"op":"discover","rid":"00000000000000000000000000000005","scopeIds":["team","other"],"watch":true}));
+        assert_eq!(read_frame(&mut stream).await["outcome"]["tag"], "ok");
+        assert_eq!(
+            daemon.clients[&id].watch.as_ref().expect("watch").scopes,
+            vec!["team".to_owned()],
+            "export is filtered by the discover caps"
+        );
+        assert!(daemon.remote_allows(id, "team", Verb::Push));
+        daemon.refreshed(id, Ok(peer(&json!([{"scopes":["team"],"allow":["push"]}]))));
+        assert!(!daemon.clients[&id].failed, "caps changed, not revoked");
+        assert!(daemon.clients[&id].watch.is_none(), "discover lost");
+        let invalidated = read_frame(&mut stream).await;
+        assert_eq!(invalidated["event"]["tag"], "invalidated");
+        assert_eq!(invalidated["event"]["reason"], "policy_changed");
+        assert!(daemon.remote_allows(id, "team", Verb::Push));
+        assert!(!daemon.remote_allows(id, "team", Verb::Discover));
+        daemon.refreshed(id, Err(crate::tailscale::Failure::Error));
+        assert!(
+            !daemon.clients[&id].failed,
+            "one failed refresh is tolerated"
+        );
+        daemon.refreshed(id, Ok(peer(&caps)));
+        daemon.refreshed(id, Err(crate::tailscale::Failure::NotRunning));
+        assert!(!daemon.clients[&id].failed, "a success resets the count");
+        daemon.refreshed(id, Err(crate::tailscale::Failure::Error));
+        assert!(daemon.clients[&id].failed, "two failures in a row close");
+        drop(daemon);
+        drop(tasks);
+        std::fs::remove_dir_all(directory).expect("cleanup");
+
+        let mut renamed = peer(&caps);
+        renamed.machine_id = "gamma".to_owned();
+        let mut rekeyed = peer(&caps);
+        rekeyed.stable_id = "n-other".to_owned();
+        for (case, result) in [
+            ("404", Err(crate::tailscale::Failure::NotFound)),
+            (
+                "expired",
+                Err(crate::tailscale::Failure::Refused("expired")),
+            ),
+            ("empty caps", Ok(peer(&json!([])))),
+            ("stable id", Ok(rekeyed)),
+            ("name", Ok(renamed)),
+        ] {
+            let (mut daemon, directory, _stream, tasks) = linked_fixture("revoke", &caps);
+            daemon.refreshed(id, result);
+            assert!(daemon.clients[&id].failed, "{case} closes the link at once");
+            drop(daemon);
+            drop(tasks);
+            std::fs::remove_dir_all(directory).expect("cleanup");
+        }
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn refresh_is_scheduled_every_fifteen_seconds_and_never_stacks() {
+        let caps = json!([{"scopes":["team"],"allow":["push"]}]);
+        let (mut daemon, directory, _stream, tasks) = linked_fixture("schedule", &caps);
+        let id = ConnectionId(1);
+        let due = daemon.clients[&id]
+            .remote
+            .as_ref()
+            .expect("remote")
+            .refresh
+            .due;
+        assert!(daemon.deadline().is_some_and(|deadline| deadline <= due));
+        tokio::time::advance(Duration::from_secs(15)).await;
+        daemon.refresh_due(Instant::now());
+        // No link driver in this fixture: nothing runs, the next refresh is rescheduled.
+        let remote = daemon.clients[&id].remote.as_ref().expect("remote");
+        assert!(!remote.refresh.running);
+        assert!(remote.refresh.due > Instant::now());
+        assert!(daemon.refreshes.is_empty());
+        drop(daemon);
+        drop(tasks);
+        std::fs::remove_dir_all(directory).expect("cleanup");
     }
     async fn read_frame(stream: &mut UnixStream) -> Value {
         use tokio::io::AsyncReadExt;

@@ -142,7 +142,6 @@ impl Prepared {
     }
 
     /// Asks tailscaled again who holds `ip` and what it may do here.
-    #[expect(dead_code, reason = "the 15 s refresh calls this in the next step")]
     pub(crate) async fn identify(&self, ip: IpAddr) -> Result<Peer, Failure> {
         let own = self.cli.status().await?;
         self.cli.whois(ip, &own, &self.machine_id).await

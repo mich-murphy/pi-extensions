@@ -67,7 +67,6 @@ impl Driver {
             .as_ref()
             .and_then(|listener| listener.local_addr().ok())
     }
-    #[expect(dead_code, reason = "the 15 s refresh calls this in the next step")]
     pub(crate) fn prepared(&self) -> &Arc<Prepared> {
         &self.prepared
     }

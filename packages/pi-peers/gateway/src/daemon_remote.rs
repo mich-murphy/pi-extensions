@@ -1,5 +1,6 @@
 //! Authenticated own-machine roster exchange and directional two-host routing.
 use std::io;
+use std::sync::Arc;
 use std::time::Duration;
 
 use serde_json::{Value, json};
@@ -8,7 +9,7 @@ use tokio::task::JoinSet;
 use tokio::time::Instant;
 
 use super::{
-    Client, Daemon, MAX_CONNECTIONS, Remote, Step, Watch, encoded_length, member, project,
+    Client, Daemon, MAX_CONNECTIONS, Refresh, Remote, Step, Watch, encoded_length, member, project,
     random_id,
 };
 use crate::breaker::LinkView;
@@ -16,10 +17,15 @@ use crate::budget::{BufferClass, ConnectionId, ConnectionKind};
 use crate::caps::Verb;
 use crate::config::Permission;
 use crate::remote::Authenticated;
+use crate::tailscale::{Failure, Peer};
 use crate::transport::{self, Charge, Event, SourceEpoch};
 
 const PING_AFTER: Duration = Duration::from_secs(30);
 const CLOSE_AFTER: Duration = Duration::from_secs(90);
+/// How often a linked peer's identity and caps are asked for again.
+pub(super) const REFRESH_EVERY: Duration = Duration::from_secs(15);
+/// Consecutive failed refreshes that close the link.
+const REFRESH_FAILURES: u8 = 2;
 
 impl Daemon {
     pub(super) fn is_remote(&self, id: ConnectionId) -> bool {
@@ -187,6 +193,7 @@ impl Daemon {
                     last_progress: Instant::now(),
                     ping: None,
                     peer,
+                    refresh: Refresh::new(Instant::now()),
                     refs: crate::intern::Refs::default(),
                 }),
                 closing: false,
@@ -305,6 +312,13 @@ impl Daemon {
                 self.clients
                     .values()
                     .filter_map(|client| client.remote.as_ref())
+                    .filter(|remote| !remote.refresh.running)
+                    .map(|remote| remote.refresh.due),
+            )
+            .chain(
+                self.clients
+                    .values()
+                    .filter_map(|client| client.remote.as_ref())
                     .map(|remote| {
                         remote.last_progress
                             + if remote.ping.is_some() {
@@ -315,6 +329,108 @@ impl Daemon {
                     }),
             )
             .min()
+    }
+    /// Starts a whois task for every linked peer whose refresh is due; never waits for it.
+    pub(super) fn refresh_due(&mut self, now: Instant) {
+        let prepared = self.link.as_ref().map(|link| Arc::clone(link.prepared()));
+        let mut due = Vec::new();
+        for (id, client) in &mut self.clients {
+            let Some(remote) = client.remote.as_mut() else {
+                continue;
+            };
+            if client.failed || remote.refresh.running || remote.refresh.due > now {
+                continue;
+            }
+            if prepared.is_some() {
+                remote.refresh.running = true;
+                due.push((*id, remote.peer.ip));
+            } else {
+                remote.refresh.due = now + REFRESH_EVERY;
+            }
+        }
+        let Some(prepared) = prepared else {
+            return;
+        };
+        for (id, ip) in due {
+            let prepared = Arc::clone(&prepared);
+            self.refreshes
+                .spawn(async move { (id, prepared.identify(ip).await) });
+        }
+    }
+    /// Applies one refresh: a vanished, expired, renamed or re-keyed node, empty caps or two
+    /// failures in a row close the link; changed caps apply to the next frame, and losing
+    /// `discover` on a watched scope ends the remote's watch.
+    pub(super) fn refreshed(&mut self, id: ConnectionId, result: Result<Peer, Failure>) {
+        let Some(remote) = self
+            .clients
+            .get_mut(&id)
+            .filter(|client| !client.failed)
+            .and_then(|client| client.remote.as_mut())
+        else {
+            return;
+        };
+        remote.refresh.running = false;
+        remote.refresh.due = Instant::now() + REFRESH_EVERY;
+        let stable_id = remote.peer.stable_id.clone();
+        let verdict = match result {
+            Ok(peer) if peer.stable_id != stable_id => Err("stable-id-changed"),
+            Ok(peer) if peer.machine_id != remote.peer.machine_id => Err("name-changed"),
+            Ok(peer) if peer.caps.is_empty() => Err("no-caps"),
+            Ok(peer) => Ok(peer),
+            Err(failure @ (Failure::NotFound | Failure::Refused(_))) => Err(failure.detail()),
+            Err(failure) => {
+                remote.refresh.failures = remote.refresh.failures.saturating_add(1);
+                let failures = remote.refresh.failures;
+                self.events.emit(
+                    &format!("whois_failed:{}", failure.detail()),
+                    json!({"event":"whois_failed","stableId":stable_id,"reason":failure.detail(),"failures":failures}),
+                );
+                if failures >= REFRESH_FAILURES {
+                    self.revoke(id, &stable_id, "refresh-failed");
+                }
+                return;
+            }
+        };
+        let peer = match verdict {
+            Ok(peer) => peer,
+            Err(reason) => {
+                self.revoke(id, &stable_id, reason);
+                return;
+            }
+        };
+        remote.refresh.failures = 0;
+        let (before, after) = (remote.peer.caps.digest(), peer.caps.digest());
+        let discover = peer.caps.scopes(Verb::Discover);
+        remote.peer = peer;
+        if before == after {
+            return;
+        }
+        self.events.emit(
+            &format!("caps_changed:{stable_id}"),
+            json!({"event":"caps_changed","stableId":stable_id,"before":before,"after":after}),
+        );
+        let lost = self
+            .clients
+            .get(&id)
+            .and_then(|client| client.watch.as_ref())
+            .filter(|watch| watch.scopes.iter().any(|scope| !discover.contains(scope)))
+            .map(|watch| watch.rid.clone());
+        if let Some(rid) = lost {
+            if let Some(client) = self.clients.get_mut(&id) {
+                client.watch = None;
+            }
+            let invalidated = json!({"v":2,"op":"roster.event","rid":rid,"event":{"tag":"invalidated","reason":"policy_changed"}});
+            if !self.queue(id, &invalidated, BufferClass::Control, None) {
+                self.fail(id);
+            }
+        }
+    }
+    fn revoke(&mut self, id: ConnectionId, stable_id: &str, reason: &str) {
+        self.events.emit(
+            &format!("link_revoked:{reason}"),
+            json!({"event":"link_revoked","stableId":stable_id,"reason":reason}),
+        );
+        self.fail(id);
     }
     pub(super) fn liveness(&mut self) {
         let Some(id) = self.remote_id() else {
@@ -444,7 +560,7 @@ impl Daemon {
             _ => self.fail(id),
         }
     }
-    fn export(&mut self, id: ConnectionId, request: &Value) {
+    pub(super) fn export(&mut self, id: ConnectionId, request: &Value) {
         if self
             .clients
             .get(&id)
