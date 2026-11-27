@@ -48,13 +48,20 @@ pub enum Endpoint {
 pub struct Settings {
     machine_id: String,
     endpoint: Endpoint,
+    #[serde(default)]
     root_certificates: Vec<PathBuf>,
+    #[serde(default)]
     certificate_chain: Vec<PathBuf>,
     #[serde(default)]
     issuer_certificates: Vec<PathBuf>,
     private_key: PathBuf,
+    #[serde(default)]
     crls: Vec<PathBuf>,
-    revocation_state: PathBuf,
+    #[serde(default)]
+    revocation_state: Option<PathBuf>,
+    /// Pinned mode: the peer's raw Ed25519 public key text; excludes every certificate field.
+    #[serde(default)]
+    peer_public_key: Option<String>,
 }
 impl fmt::Debug for Settings {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -79,11 +86,16 @@ enum Crypto {
     Listen(Arc<rustls::ServerConfig>),
 }
 
-/// Prepared credentials with one bounded persistence job and an exclusive floor-store lock.
-pub struct Prepared {
-    machine_id: String,
-    endpoint: Endpoint,
-    crypto: Crypto,
+/// How the peer is authenticated once the handshake's verifier accepted it.
+enum Trusted {
+    /// Private-CA certificates, CRLs and a durable revocation floor.
+    Certificates(Box<Certificates>),
+    /// One pinned raw public key; carries this gateway's own public key for diagnostics.
+    Pinned([u8; crate::keys::PUBLIC_KEY_LEN]),
+}
+
+/// Private-CA state with one bounded persistence job and an exclusive floor-store lock.
+struct Certificates {
     trust: Trust,
     own_policy: Policy,
     peer_policy: Policy,
@@ -91,6 +103,14 @@ pub struct Prepared {
     expires_at: u64,
     floors: Arc<Mutex<FloorStore>>,
     persistence: Arc<Semaphore>,
+}
+
+/// Prepared credentials for one configured peer.
+pub struct Prepared {
+    machine_id: String,
+    endpoint: Endpoint,
+    crypto: Crypto,
+    trusted: Trusted,
 }
 impl fmt::Debug for Prepared {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -137,6 +157,30 @@ impl Settings {
     }
 
     pub(crate) fn validate(&self) -> io::Result<()> {
+        if !machine(&self.machine_id) || !self.private_key.is_absolute() {
+            return Err(rejected());
+        }
+        // Port 0 asks the OS for an ephemeral listener port, reported at readiness. It is
+        // never a valid destination, so a connecting endpoint must name a real port.
+        if matches!(self.endpoint, Endpoint::Connect { address } if address.port() == 0) {
+            return Err(rejected());
+        }
+        if let Some(peer) = &self.peer_public_key {
+            // Pinned mode takes no certificate, CRL or floor field; mixing the two is refused.
+            if crate::keys::parse_public(peer).is_none()
+                || !self.root_certificates.is_empty()
+                || !self.certificate_chain.is_empty()
+                || !self.issuer_certificates.is_empty()
+                || !self.crls.is_empty()
+                || self.revocation_state.is_some()
+            {
+                return Err(rejected());
+            }
+            return Ok(());
+        }
+        let Some(revocation_state) = &self.revocation_state else {
+            return Err(rejected());
+        };
         if self.root_certificates.is_empty()
             || self.root_certificates.len() > 4
             || self.certificate_chain.is_empty()
@@ -144,27 +188,15 @@ impl Settings {
             || self.issuer_certificates.len() > 8
             || self.crls.is_empty()
             || self.crls.len() > 16
-            || self.machine_id.is_empty()
-            || self.machine_id.len() > 32
-            || !self.machine_id.as_bytes()[0].is_ascii_lowercase()
-            || !self
-                .machine_id
-                .bytes()
-                .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'-')
             || self
                 .root_certificates
                 .iter()
                 .chain(&self.certificate_chain)
                 .chain(&self.issuer_certificates)
                 .chain(&self.crls)
-                .chain([&self.private_key, &self.revocation_state])
+                .chain([revocation_state])
                 .any(|path| !path.is_absolute())
         {
-            return Err(rejected());
-        }
-        // Port 0 asks the OS for an ephemeral listener port, reported at readiness. It is
-        // never a valid destination, so a connecting endpoint must name a real port.
-        if matches!(self.endpoint, Endpoint::Connect { address } if address.port() == 0) {
             return Err(rejected());
         }
         Ok(())
@@ -187,6 +219,10 @@ impl Settings {
     }
 
     fn prepare_mode(self, own_machine: &str, mode: Preparation) -> io::Result<Prepared> {
+        if let Some(peer) = &self.peer_public_key {
+            return self.prepare_pinned(peer);
+        }
+        let revocation_state = self.revocation_state.clone().ok_or_else(rejected)?;
         let roots = self
             .root_certificates
             .iter()
@@ -240,9 +276,9 @@ impl Settings {
             .validate_revocation_bundle(&issuers, unix_now()?)
             .map_err(|error| credential_error("crl-invalid", error))?;
         let mut floors = (if mode == Preparation::Commit {
-            FloorStore::open(&self.revocation_state)
+            FloorStore::open(&revocation_state)
         } else {
-            FloorStore::snapshot(&self.revocation_state)
+            FloorStore::snapshot(&revocation_state)
         })
         .map_err(|error| credential_error("revocation-floor-unavailable", error))?;
         // Installing a CRL that rejects every peer must still protect its floor.
@@ -257,19 +293,60 @@ impl Settings {
             machine_id: self.machine_id,
             endpoint: self.endpoint,
             crypto,
-            trust,
-            own_policy,
-            peer_policy,
-            own_chain,
-            expires_at,
-            floors: Arc::new(Mutex::new(floors)),
-            persistence: Arc::new(Semaphore::new(1)),
+            trusted: Trusted::Certificates(Box::new(Certificates {
+                trust,
+                own_policy,
+                peer_policy,
+                own_chain,
+                expires_at,
+                floors: Arc::new(Mutex::new(floors)),
+                persistence: Arc::new(Semaphore::new(1)),
+            })),
+        })
+    }
+
+    /// Loads the own Ed25519 key and pins the configured peer key; no other state exists.
+    fn prepare_pinned(&self, peer: &str) -> io::Result<Prepared> {
+        let peer = crate::keys::parse_public(peer).ok_or_else(rejected)?;
+        let key = read_private(&self.private_key)
+            .map_err(|error| credential_error("private-key", error))?;
+        let own = crate::keys::public_key(&key)
+            .map_err(|error| credential_error("private-key", error))?;
+        // Pinning our own key would let a reflected connection authenticate as the peer.
+        if own == peer {
+            return Err(credential_error("identity", rejected()));
+        }
+        let crypto = match self.endpoint {
+            Endpoint::Connect { .. } => Crypto::Connect(Arc::new(
+                crate::pinned::client_config(key, &peer)
+                    .map_err(|error| credential_error("private-key", error))?,
+            )),
+            Endpoint::Listen { .. } => Crypto::Listen(Arc::new(
+                crate::pinned::server_config(key, &peer)
+                    .map_err(|error| credential_error("private-key", error))?,
+            )),
+        };
+        Ok(Prepared {
+            machine_id: self.machine_id.clone(),
+            endpoint: self.endpoint,
+            crypto,
+            trusted: Trusted::Pinned(own),
         })
     }
 }
 impl Prepared {
-    pub(crate) fn expires_at(&self) -> u64 {
-        self.expires_at
+    /// The read-only `--diagnose` view of prepared credentials.
+    pub(crate) fn diagnostic(&self) -> io::Result<serde_json::Value> {
+        Ok(match &self.trusted {
+            Trusted::Certificates(certificates) => {
+                let expires_at = certificates.expires_at;
+                let warning = expires_at.saturating_sub(unix_now()?) <= 7 * 86400;
+                serde_json::json!({"state":"configured","credentialExpiresAt":expires_at,"expiryWarning":warning})
+            }
+            Trusted::Pinned(own) => {
+                serde_json::json!({"state":"configured","trust":"pinned","publicKey":crate::keys::hex(own)})
+            }
+        })
     }
     /// Returns the operator-selected single-pair connection role/address.
     pub fn endpoint(&self) -> Endpoint {
@@ -323,25 +400,36 @@ impl Prepared {
 
     async fn authorize(&self, stream: TlsStream<TcpStream>) -> io::Result<Authenticated> {
         let common = stream.get_ref().1;
-        if common.is_handshaking() {
+        if common.is_handshaking() || common.peer_certificates().is_none() {
             return Err(rejected());
         }
+        let certificates = match &self.trusted {
+            // The verifier accepted exactly the pinned key; nothing about it expires.
+            Trusted::Pinned(_) => {
+                return Ok(Authenticated {
+                    stream,
+                    lease: LinkLease::unbounded(),
+                });
+            }
+            Trusted::Certificates(certificates) => certificates,
+        };
         let chain: Vec<_> = common
             .peer_certificates()
             .ok_or_else(rejected)?
             .iter()
             .map(|certificate| certificate.to_vec())
             .collect();
-        self.peer_policy
+        certificates
+            .peer_policy
             .credential_expiry(&chain, unix_now()?)
             .map_err(io::Error::other)?;
         // The permit lives inside the blocking job, even if its awaiter times out.
         // A stuck filesystem can therefore never create an unbounded blocking waitlist.
-        let permit = Arc::clone(&self.persistence)
+        let permit = Arc::clone(&certificates.persistence)
             .try_acquire_owned()
             .map_err(|_| io::Error::new(io::ErrorKind::WouldBlock, "revocation commit busy"))?;
-        let floors = Arc::clone(&self.floors);
-        let trust = self.trust.clone();
+        let floors = Arc::clone(&certificates.floors);
+        let trust = certificates.trust.clone();
         tokio::task::spawn_blocking(move || {
             let _permit = permit;
             floors
@@ -352,13 +440,13 @@ impl Prepared {
         .await
         .map_err(io::Error::other)??;
         let now = unix_now()?;
-        let peer = self
+        let peer = certificates
             .peer_policy
             .credential_expiry(&chain, now)
             .map_err(io::Error::other)?;
-        let own = self
+        let own = certificates
             .own_policy
-            .credential_expiry(&self.own_chain, now)
+            .credential_expiry(&certificates.own_chain, now)
             .map_err(io::Error::other)?;
         let lease = LinkLease::new(own, peer, SystemTime::now()).map_err(io::Error::other)?;
         Ok(Authenticated { stream, lease })
@@ -370,13 +458,21 @@ fn unix_now() -> io::Result<u64> {
         .map_err(io::Error::other)?
         .as_secs())
 }
+fn machine(value: &str) -> bool {
+    !value.is_empty()
+        && value.len() <= 32
+        && value.as_bytes()[0].is_ascii_lowercase()
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'-')
+}
 fn rejected() -> io::Error {
     io::Error::new(
         io::ErrorKind::PermissionDenied,
         "remote credentials rejected",
     )
 }
-fn read_private(path: &Path) -> io::Result<Vec<u8>> {
+pub(crate) fn read_private(path: &Path) -> io::Result<Vec<u8>> {
     crate::paths::private_parent(path)?;
     let parent = path.parent().ok_or_else(rejected)?;
     if !path.is_absolute() || parent.canonicalize()? != parent {

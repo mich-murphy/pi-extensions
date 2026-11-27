@@ -23,7 +23,7 @@ async fn main() -> io::Result<()> {
         if json.is_some() {
             serde_json::to_writer(
                 &mut stdout,
-                &serde_json::json!({"name":"pi-gateway","version":env!("CARGO_PKG_VERSION"),"wireVersions":[2],"capabilities":["managed-on-demand-v1","pairing-v1","gateway-control-v1","setup-lock-v1","config-generation-v1"]}),
+                &serde_json::json!({"name":"pi-gateway","version":env!("CARGO_PKG_VERSION"),"wireVersions":[2],"capabilities":["managed-on-demand-v1","pairing-v1","gateway-control-v1","setup-lock-v1","config-generation-v1","pinned-keys-v1"]}),
             )?;
         } else {
             write!(stdout, "pi-gateway {}", env!("CARGO_PKG_VERSION"))?;
@@ -32,6 +32,9 @@ async fn main() -> io::Result<()> {
     }
     if command.as_deref() == Some(std::ffi::OsStr::new("pair")) {
         return pair(arguments);
+    }
+    if command.as_deref() == Some(std::ffi::OsStr::new("key")) {
+        return key(arguments);
     }
     let managed = command.as_deref() == Some(std::ffi::OsStr::new("--managed"));
     if managed {
@@ -129,13 +132,33 @@ async fn serve(config: Config, mode: Mode) -> io::Result<()> {
     }
 }
 
-fn pair(mut arguments: impl Iterator<Item = std::ffi::OsString>) -> io::Result<()> {
+fn pair(arguments: impl Iterator<Item = std::ffi::OsString>) -> io::Result<()> {
+    let (operation, bytes) = input("pair", arguments)?;
+    let output = pi_gateway::pairing::execute(&operation, &bytes)?;
+    serde_json::to_writer(io::stdout().lock(), &output)?;
+    io::stdout().write_all(b"\n")
+}
+
+fn key(arguments: impl Iterator<Item = std::ffi::OsString>) -> io::Result<()> {
+    let (operation, bytes) = input("key", arguments)?;
+    let output = pi_gateway::keys::execute(&operation, &bytes)?;
+    serde_json::to_writer(io::stdout().lock(), &output)?;
+    io::stdout().write_all(b"\n")
+}
+
+/// Reads `OP --input ABS_JSON`: one bounded regular file, never followed through a symlink.
+fn input(
+    command: &str,
+    mut arguments: impl Iterator<Item = std::ffi::OsString>,
+) -> io::Result<(String, Vec<u8>)> {
     let operation = arguments
         .next()
         .and_then(|arg| arg.into_string().ok())
-        .ok_or_else(|| io::Error::other("missing pair operation"))?;
+        .ok_or_else(|| io::Error::other(format!("missing {command} operation")))?;
     if arguments.next().as_deref() != Some(std::ffi::OsStr::new("--input")) {
-        return Err(io::Error::other("pair requires --input ABS_JSON"));
+        return Err(io::Error::other(format!(
+            "{command} requires --input ABS_JSON"
+        )));
     }
     let path = PathBuf::from(
         arguments
@@ -143,9 +166,9 @@ fn pair(mut arguments: impl Iterator<Item = std::ffi::OsString>) -> io::Result<(
             .ok_or_else(|| io::Error::other("missing input path"))?,
     );
     if !path.is_absolute() || arguments.next().is_some() {
-        return Err(io::Error::other(
-            "pair requires one absolute JSON input path",
-        ));
+        return Err(io::Error::other(format!(
+            "{command} requires one absolute JSON input path"
+        )));
     }
 
     let file = std::fs::OpenOptions::new()
@@ -157,11 +180,11 @@ fn pair(mut arguments: impl Iterator<Item = std::ffi::OsString>) -> io::Result<(
         )
         .open(path)?;
     if !file.metadata()?.is_file() {
-        return Err(io::Error::other("pair input must be a regular file"));
+        return Err(io::Error::other(format!(
+            "{command} input must be a regular file"
+        )));
     }
     let mut bytes = Vec::new();
     file.take(32766).read_to_end(&mut bytes)?;
-    let output = pi_gateway::pairing::execute(&operation, &bytes)?;
-    serde_json::to_writer(io::stdout().lock(), &output)?;
-    io::stdout().write_all(b"\n")
+    Ok((operation, bytes))
 }

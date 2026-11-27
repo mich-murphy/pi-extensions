@@ -65,6 +65,14 @@ impl LinkLease {
         })
     }
 
+    /// A lease for a link whose authentication never expires; only liveness or loss ends it.
+    pub(crate) fn unbounded() -> Self {
+        // Thirty years, the far-future bound tokio itself uses for a deadline that never fires.
+        Self {
+            deadline: Instant::now() + Duration::from_hours(24 * 365 * 30),
+        }
+    }
+
     pub(crate) fn deadline(&self) -> Instant {
         self.deadline
     }

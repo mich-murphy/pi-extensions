@@ -201,13 +201,7 @@ impl Config {
         let remote = match &self.remote {
             None => serde_json::json!({"state":"disabled"}),
             Some(settings) => match settings.clone().diagnose(&self.machine_id) {
-                Ok(prepared) => {
-                    let now = std::time::SystemTime::now()
-                        .duration_since(std::time::UNIX_EPOCH)
-                        .map_err(std::io::Error::other)?
-                        .as_secs();
-                    serde_json::json!({"state":"configured","credentialExpiresAt":prepared.expires_at(),"expiryWarning":prepared.expires_at().saturating_sub(now) <= 7*86400})
-                }
+                Ok(prepared) => prepared.diagnostic()?,
                 Err(error) => match crate::remote::degradation(&error) {
                     Some(reason) => serde_json::json!({"state":"degraded", "reason":reason}),
                     None => return Err(error),

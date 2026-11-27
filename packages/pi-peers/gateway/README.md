@@ -18,6 +18,7 @@ The binary is `target/release/pi-gateway`. For a two-machine setup, see [remote 
 | `--managed --config` | Absolute path to the JSON config | Runs while registered local sessions participate, with bounded startup and disconnect grace periods. |
 | `--version [--json]` | None | Prints the version and exits without reading configuration or starting a gateway. JSON also reports supported wire versions and capabilities. |
 | `--diagnose` | Absolute config path | Read-only credential/floor snapshot; never evidence of a running gateway or live link. |
+| `key generate\|show --input` | Absolute strict JSON input path `{"version":1,"privateKey":"/abs/key.der"}` | `generate` creates a new owner-only Ed25519 key (refusing an existing file); `show` reads one. Both print `{"version":1,"operation":…,"publicKey":"<64 hex>"}`. See [pinned keys](#pinned-keys). |
 | `pair OP --input` | Absolute strict JSON input path | Explicit create/join/issue/import/renew/revoke/export/inspect or import-existing; public-only JSON output. See [native provisioning](PAIRING.md). |
 | `--setup-lock` | Absolute permanent private lock path | Holds the exclusive setup flock while stdin stays open; emits a locked acknowledgement. Never unlink this lock. |
 | `--request-restart` | Absolute config path | One machine-bound local managed restart request. Requires exact acknowledgement and disconnect; unknown outcomes are not retried. |
@@ -63,12 +64,32 @@ The config is strict JSON, 32 KiB or smaller, with no unknown fields.
 | `remote` | Optional object | One peer gateway. |
 | `remote.machineId` | Machine pattern, not your own | Peer name. It must have a policy. |
 | `remote.endpoint` | `{"mode":"listen"\|"connect","address":"IP:port"}` | One side listens, the other connects. A listener may use port `0`: the OS picks a free port and `ready` reports it. A connector must name a real port. |
+| `remote.peerPublicKey` | 64 lowercase hex characters | Pinned mode: the peer's public key. Excludes every certificate, CRL and floor field below. |
 | `remote.rootCertificates` | 1–4 paths | Trusted roots. |
 | `remote.certificateChain` | 1–8 paths | Your chain, leaf first, without the root. |
 | `remote.issuerCertificates` | 0–8 paths | Extra issuers used only to verify a CRL. They add no trust. |
-| `remote.privateKey` | Path | Your leaf's private key. |
+| `remote.privateKey` | Path | Your leaf's private key, or in pinned mode your Ed25519 key. |
 | `remote.crls` | 1–16 paths | One complete CRL per issuer. |
 | `remote.revocationState` | Path | Floor file from `--initialize-revocation-floor`. |
+
+## Pinned keys
+
+Pinned mode (capability `pinned-keys-v1`) replaces certificates with one Ed25519 key per
+gateway, like SSH `known_hosts`: each side pins the other's public key and nothing else.
+
+```json
+"remote": {"machineId":"dev-01","endpoint":{"mode":"connect","address":"100.64.0.2:7443"},
+           "privateKey":"/abs/key.der","peerPublicKey":"<peer's 64 hex>"}
+```
+
+The handshake is TLS 1.3 with RFC 7250 raw public keys in both directions and Ed25519
+signatures only. A peer is accepted only when it presents exactly the pinned key; a
+certificate-presenting peer, any other key and a connection reflected back to its own
+gateway are refused. Pinning the gateway's own key fails startup with reason `identity`.
+Nothing expires: the link lasts until ping/close liveness or loss ends it. The key file is
+the PKCS#8 v2 document from `key generate`, under the same file rules as other
+credentials below. `--diagnose` reports
+`{"state":"configured","trust":"pinned","publicKey":"<own 64 hex>"}`.
 
 ## Credential files
 
@@ -106,7 +127,7 @@ See [provisioning and maintenance](PAIRING.md) for confirmation and custody deta
 | TLS handshake and floor commit | 5 s |
 | Ping after silence | 30 s |
 | Close after silence | 90 s |
-| Link age cap | 24 h, or the earliest certificate or CRL expiry |
+| Link age cap | 24 h, or the earliest certificate or CRL expiry; none for pinned keys |
 | Reconnect | 6 attempts per 60 s, with backoff from 250 ms, then the breaker opens |
 | Breaker probe | 30 s doubling to 240 s, plus up to 25% jitter (always 30 s–5 min), forever |
 | Pending inbound handshakes | 4 |

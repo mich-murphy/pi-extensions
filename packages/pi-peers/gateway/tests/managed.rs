@@ -362,7 +362,8 @@ fn manual_mode_remains_idle_and_version_is_side_effect_free() {
             "pairing-v1",
             "gateway-control-v1",
             "setup-lock-v1",
-            "config-generation-v1"
+            "config-generation-v1",
+            "pinned-keys-v1"
         ]),
         "managed contract advertised"
     );
