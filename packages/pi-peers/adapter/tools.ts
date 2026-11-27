@@ -65,6 +65,7 @@ const listOutput = Type.Union([
     peers: Type.Array(
       Type.Object({
         handle: Type.String(),
+        machine: Type.String(),
         label: Type.String(),
         self: Type.Boolean(),
         restarted: Type.Boolean(),
@@ -75,7 +76,7 @@ const listOutput = Type.Union([
 ]);
 
 const LIST_DESCRIPTION =
-  "List Pi sessions you can message: a handle for peers_send and the label each session gave itself (unverified). Yours is marked. Listed does not mean active. Handles are local to this session.";
+  "List Pi sessions you can message: a handle for peers_send and the label each session gave itself (unverified). Yours is marked. Listed does not mean active. Handles are local to this session. Machine names are verified by the gateway; labels are what each session says about itself.";
 
 const SEND_DESCRIPTION =
   "Send one message to a handle from peers_list. The result says delivered (in their inbox, unread), not delivered (with the reason), or may have arrived (follow its note; never resend as new). To answer a message, use kind reply and replyTo its id.";
@@ -258,7 +259,7 @@ function listLine(entry: Listed): string {
     ...(entry.linkDown === true ? ["link down"] : []),
   ];
 
-  const head = markers.length === 0 ? entry.handle : `${entry.handle} (${markers.join("; ")})`;
+  const head = `${markers.length === 0 ? entry.handle : `${entry.handle} (${markers.join("; ")})`} · ${entry.machine}`;
   const room = Math.max(8, 80 - head.length - 3);
   const characters = Array.from(graphemes.segment(entry.label), (part) => part.segment);
 
@@ -283,8 +284,9 @@ function listStructured(value: ListValue | ToolProblem): Static<typeof listOutpu
 
   return {
     ok: true,
-    peers: value.peers.map(({ handle, label, self, restarted }) => ({
+    peers: value.peers.map(({ handle, machine, label, self, restarted }) => ({
       handle,
+      machine,
       label,
       self,
       restarted,
@@ -343,10 +345,9 @@ async function list(
 
   const peers = session.handles
     .list(found.entries)
+    .map((entry) => ({ ...entry, machine: entry.peer.machineId }))
     .map((entry) =>
-      !entry.self && session.client.linkDown(entry.peer.machineId)
-        ? { ...entry, linkDown: true }
-        : entry,
+      !entry.self && session.client.linkDown(entry.machine) ? { ...entry, linkDown: true } : entry,
     );
 
   return { value: { peers }, text: listText(peers) };

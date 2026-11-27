@@ -211,7 +211,7 @@ Start two Pi sessions on the same machine. Both use the same config and gateway.
 
 | Tool         | Parameters                                                                                                                              | Purpose                                                                                    |
 | ------------ | --------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ |
-| `peers_list` | `scope?`                                                                                                                                | List sessions you can message, each with a handle and its label.                           |
+| `peers_list` | `scope?`                                                                                                                                | List sessions you can message, each with a handle, its machine and its label.              |
 | `peers_send` | `to` (handle), `kind`, `content`, `format?` (default `markdown`), `replyTo?` (message id), `retryOf?` (message id), `status?`, `scope?` | Send a request, reply or update to one session.                                            |
 | `peers_take` | `limit?` (1–8, default 4), `waitSeconds?` (0–300, default 0)                                                                            | Move messages from your inbox into the conversation, waiting for the first one when asked. |
 
@@ -219,7 +219,7 @@ Start two Pi sessions on the same machine. Both use the same config and gateway.
 
 ### Use from codemode
 
-Scripts can call only `peers_list`, which resolves to `{ ok, peers: [{ handle, label, self, restarted }] }` or `{ ok: false, code, note }`. `peers_send` and `peers_take` are not callable from scripts: a script that fails after a send cannot tell whether to resend, and a take removes messages that a failed script would lose. Call them directly instead. When codemode is active, their descriptions say so, so the model does not try them from a script first.
+Scripts can call only `peers_list`, which resolves to `{ ok, peers: [{ handle, machine, label, self, restarted }] }` or `{ ok: false, code, note }`. `peers_send` and `peers_take` are not callable from scripts: a script that fails after a send cannot tell whether to resend, and a take removes messages that a failed script would lose. Call them directly instead. When codemode is active, their descriptions say so, so the model does not try them from a script first.
 
 `format` is `text`, `markdown`, `git-diff` or `git-format-patch`. All formats are descriptive; nothing is applied or fetched.
 
@@ -237,7 +237,7 @@ Results show message ids as short session-local aliases such as `m-3f2a`: the fi
 
 ### Labels
 
-Labels are claims made by the other session and are not verified. Your own session is marked by comparing runtime identities, never label text. Each session registers a label made of, in order: the configured `label`, the session name, the repository folder name, `derived from s-xxxx` for a forked session, and `branch X at connect` when `shareBranch` is true. Control and bidirectional characters are removed. Parts are dropped from the end to fit 128 bytes; the configured label is cut only as a last resort. The session name and branch are as they were at connect and can go stale.
+Labels are claims made by the other session and are not verified. The machine shown for each session is verified by the gateway, so use it, not the label, to tell where a session runs. Your own session is marked by comparing runtime identities, never label text. Each session registers a label made of, in order: the configured `label`, the session name, the repository folder name, `derived from s-xxxx` for a forked session, and `branch X at connect` when `shareBranch` is true. Control and bidirectional characters are removed. Parts are dropped from the end to fit 128 bytes; the configured label is cut only as a last resort. The session name and branch are as they were at connect and can go stale.
 
 ### Use from other extensions
 
