@@ -209,11 +209,20 @@ export const noUnreviewedChange: Formula = always(
 
 const LOADING = "Checking…";
 
-const COMMAND_OPENS_ITS_SCREEN_WHEN_LOADING_ENDS_AFTER_ESCAPE_REACHES_ROOT = [
-  "Peers",
-  "Peers › Setup",
-  "Peers › Reset",
-];
+const SCREEN_COMMANDS = new Set(["\u0015/peers setup", "\u0015/peers reset"]);
+let commandArmed = false;
+let commandUntouched = false;
+
+const untouchedCommand = extract((state: State) => {
+  const typed = typedText(state);
+
+  if (typed !== null) {
+    commandUntouched = commandArmed && typed === ENTER;
+    commandArmed = SCREEN_COMMANDS.has(typed);
+  }
+
+  return commandUntouched;
+});
 
 function backFrom(before: Screen): ReadonlyArray<string | null> | undefined {
   if (before.kind === null || before.path === null || before.depth === 0) {
@@ -227,19 +236,13 @@ function backFrom(before: Screen): ReadonlyArray<string | null> | undefined {
   return before.kind === "outcome" ? ["Peers"] : [before.path.slice(0, -1).join(" › ")];
 }
 
-const loadingReport = (before: Screen): boolean =>
-  before.depth === 1 && before.body.some((row) => row.trim() === LOADING);
-
 export const escapeGoesBack: Formula = escapeLandsOn(
   () => ui.current,
   () => lastKey.current,
-  (before) =>
-    loadingReport(before)
-      ? COMMAND_OPENS_ITS_SCREEN_WHEN_LOADING_ENDS_AFTER_ESCAPE_REACHES_ROOT
-      : backFrom(before),
+  backFrom,
 );
 
-const SETUP_COMMAND_OPENS_SETUP_WHEN_LOADING_ENDS_SO_ESCAPE_MAY_GO_BACK_TO_ROOT = [null, "Peers"];
+const FIRST_ESCAPE_MAY_ARRIVE_AFTER_THE_COMMAND_SCREEN_OPENED = [null, "Peers"];
 
 export const escapeClosesRoot: Formula = escapeLandsOn(
   () => ui.current,
@@ -249,8 +252,8 @@ export const escapeClosesRoot: Formula = escapeLandsOn(
       return undefined;
     }
 
-    return before.rows.some((row) => row.value === LOADING)
-      ? SETUP_COMMAND_OPENS_SETUP_WHEN_LOADING_ENDS_SO_ESCAPE_MAY_GO_BACK_TO_ROOT
+    return (untouchedCommand.current ?? false) && before.rows.some((row) => row.value === LOADING)
+      ? FIRST_ESCAPE_MAY_ARRIVE_AFTER_THE_COMMAND_SCREEN_OPENED
       : [null];
   },
 );

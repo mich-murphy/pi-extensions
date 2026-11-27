@@ -94,6 +94,7 @@ export class PeersMenu implements Component, Focusable {
   handleInput(data: string): void {
     const screen = this.model.top;
     const keys = this.host.keybindings;
+    this.model.touched = true;
 
     if (keys.matches(data, "tui.select.cancel")) {
       this.model.back();
