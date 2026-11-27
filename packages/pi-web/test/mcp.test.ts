@@ -57,6 +57,14 @@ describe("parseMcpMessage", () => {
     expect(parseMcpMessage(body, "application/json")._tag).toBe("Success");
   });
 
+  test("parses a JSON response whose string holds a Unicode line separator before data:", () => {
+    const value = { jsonrpc: "2.0", id: 2, result: { text: "a\u2028data: b\u2029data:" } };
+
+    expect(parseMcpMessage(JSON.stringify(value), "application/json")).toStrictEqual(
+      Result.succeed(value),
+    );
+  });
+
   test("keeps a distinct reason for each missing or malformed response", () => {
     expect(parseMcpMessage("data: not-json\n\n", "text/event-stream")).toStrictEqual(
       protocolInvalid("Invalid JSON in SSE stream"),
