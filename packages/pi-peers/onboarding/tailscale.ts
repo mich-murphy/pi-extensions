@@ -1,9 +1,9 @@
 import { execFile } from "node:child_process";
-import { stat } from "node:fs/promises";
+import { lstat, open, readlink, realpath, stat } from "node:fs/promises";
 import { isIP } from "node:net";
+import { dirname, isAbsolute } from "node:path";
 import { promisify } from "node:util";
 import { Schema } from "effect";
-import { errnoCode } from "../../shared/errno.js";
 import { gatewayEnvironment } from "./managed.js";
 import { RefusalError } from "./refusal.js";
 import { parseJson } from "./schema.js";
@@ -81,37 +81,140 @@ const decodeSelf = Schema.decodeUnknownSync(
 
 const NOT_RUNNING = /doesn't appear to be running|not running|NeedsLogin|logged out/iu;
 
-type Probe = "missing" | "unsafe" | "found";
+const MAX_LINKS = 8;
+const MAX_SCRIPT = 4096;
+const SEPARATORS = /[\s"'`;=:(){}<>|&$]/u;
+const SHEBANG = [0x23, 0x21];
 
-async function probe(path: string): Promise<Probe> {
-  try {
-    const entry = await stat(path);
-    const owner = entry.uid === 0 || entry.uid === process.getuid?.();
-
-    return entry.isFile() && owner && (entry.mode & 0o022) === 0 && (entry.mode & 0o111) !== 0
-      ? "found"
-      : "unsafe";
-  } catch (error) {
-    return errnoCode(error) === "ENOENT" || errnoCode(error) === "ENOTDIR" ? "missing" : "unsafe";
+class UntrustedCommand extends Error {
+  constructor() {
+    super("untrusted tailscale command");
   }
+}
+
+function ownerOk(owner: number, uid: number | undefined): boolean {
+  return owner === 0 || owner === uid;
+}
+
+async function followLinks(path: string, uid: number | undefined, links: number): Promise<string> {
+  const entry = await lstat(path);
+
+  if (!entry.isSymbolicLink()) {
+    return path;
+  }
+
+  if (links >= MAX_LINKS || !ownerOk(entry.uid, uid)) {
+    throw new UntrustedCommand();
+  }
+
+  const target = await readlink(path);
+
+  return followLinks(isAbsolute(target) ? target : `${dirname(path)}/${target}`, uid, links + 1);
+}
+
+async function header(path: string): Promise<Uint8Array> {
+  const handle = await open(path, "r");
+
+  try {
+    const buffer = new Uint8Array(MAX_SCRIPT + SHEBANG.length);
+    const { bytesRead } = await handle.read(buffer, 0, buffer.length, 0);
+
+    return buffer.subarray(0, bytesRead);
+  } finally {
+    await handle.close();
+  }
+}
+
+async function isFile(path: string): Promise<boolean> {
+  return stat(path).then(
+    (entry) => entry.isFile(),
+    () => false,
+  );
+}
+
+async function script(text: string, uid: number | undefined, depth: number): Promise<void> {
+  const [first = "", ...lines] = text.split("\n");
+  const interpreter = first.trim().split(/\s+/u)[0] ?? "";
+
+  if (interpreter === "") {
+    throw new UntrustedCommand();
+  }
+
+  await trusted(interpreter, uid, depth + 1);
+
+  const tokens = lines
+    .filter((line) => !line.trimStart().startsWith("#"))
+    .flatMap((line) => line.split(SEPARATORS))
+    .filter((token) => token.startsWith("/"));
+
+  const files = await Promise.all(tokens.map(async (token) => isFile(token)));
+
+  await Promise.all(
+    tokens
+      .filter((_token, index) => files[index] === true)
+      .map(async (token) => trusted(token, uid, depth + 1)),
+  );
+}
+
+async function trusted(path: string, uid: number | undefined, depth: number): Promise<string> {
+  if (!isAbsolute(path)) {
+    throw new UntrustedCommand();
+  }
+
+  const program = await realpath(await followLinks(path, uid, 0));
+  const entry = await stat(program);
+
+  if (
+    !entry.isFile() ||
+    !ownerOk(entry.uid, uid) ||
+    (entry.mode & 0o022) !== 0 ||
+    (entry.mode & 0o111) === 0
+  ) {
+    throw new UntrustedCommand();
+  }
+
+  const bytes = await header(program);
+
+  if (bytes[0] !== SHEBANG[0] || bytes[1] !== SHEBANG[1]) {
+    return program;
+  }
+
+  const rest = bytes.subarray(SHEBANG.length);
+
+  if (depth > 0 || rest.length >= MAX_SCRIPT - SHEBANG.length) {
+    throw new UntrustedCommand();
+  }
+
+  await script(new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(rest), uid, depth);
+
+  return program;
+}
+
+async function present(path: string): Promise<boolean> {
+  return (
+    !isAbsolute(path) ||
+    lstat(path).then(
+      () => true,
+      () => false,
+    )
+  );
 }
 
 export async function findTailscale(
   candidates: ReadonlyArray<string> = TAILSCALE_PATHS,
 ): Promise<string> {
-  const probes = await Promise.all(candidates.map(async (candidate) => probe(candidate)));
-  const index = probes.findIndex((result) => result !== "missing");
-  const found = candidates[index];
+  const found = await Promise.all(candidates.map(async (candidate) => present(candidate)));
+  const candidate = candidates[found.indexOf(true)];
 
-  if (found === undefined) {
+  if (candidate === undefined) {
     throw new TailscaleRefusal("tailscale-missing");
   }
 
-  if (probes[index] === "unsafe") {
+  try {
+    return await trusted(candidate, process.geteuid?.(), 0);
+  } catch {
     throw new TailscaleRefusal("tailscale-error");
   }
-
-  return found;
 }
 
 async function run(command: string, args: ReadonlyArray<string>): Promise<string> {
