@@ -181,8 +181,8 @@ source/version/manifest pins, a matching automatically detected host target, an
 absolute private `installRoot`, and a bounded absolute `deadlineMs` (at most one
 hour). The plan is copied/frozen before effects; an already-cancelled operation
 has zero filesystem/network effects. `requiredCapabilities` adds flow-specific
-capabilities to mandatory wire 1 and `managed-on-demand-v1` checks. New pairing
-flows must require their helper capability; the old managed binary is insufficient.
+capabilities to mandatory wire 1 and `managed-on-demand-v1` checks. Remote
+setup requires `pinned-keys-v1`; an older managed binary is insufficient.
 The optional progress callback emits fixed technical stages, not downloaded data.
 Fetch, exec and filesystem seams permit isolated integration tests; production
 uses bounded Node fetch, filesystem operations and absolute `execFile` commands.

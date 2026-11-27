@@ -60,7 +60,6 @@ struct Remote {
     roster: Vec<(Value, Charge, SourceEpoch)>,
     snapshot_rid: String,
     established: bool,
-    expires: Instant,
     last_progress: Instant,
     ping: Option<String>,
     scopes: Vec<String>,
@@ -117,7 +116,7 @@ impl Daemon {
         let (link, remote_degraded) = match config
             .remote
             .as_ref()
-            .map(|settings| settings.clone().prepare(&config.machine_id))
+            .map(|settings| settings.clone().prepare())
             .transpose()
         {
             Ok(prepared) => match prepared.map(Driver::new).transpose() {
@@ -389,12 +388,7 @@ impl Daemon {
             .clients
             .iter()
             .filter(|(_, client)| {
-                client.failed
-                    || (client.remote.is_some() && !client.source.active())
-                    || client
-                        .remote
-                        .as_ref()
-                        .is_some_and(|remote| remote.expires <= Instant::now())
+                client.failed || (client.remote.is_some() && !client.source.active())
             })
             .map(|(id, _)| *id)
             .collect();
@@ -986,7 +980,6 @@ impl Daemon {
                 .find(|(descriptor, _, _)| descriptor["peer"] == *peer)
                 .map(|(_, _, epoch)| epoch.permit())?;
             permit.bind_authority(client.source.permit());
-            permit.expire_at(remote.expires);
             Some(permit)
         } else {
             Some(client.source.permit())
@@ -1330,7 +1323,6 @@ mod tests {
             roster: Vec::new(),
             snapshot_rid: "00000000000000000000000000000001".to_owned(),
             established: true,
-            expires: Instant::now() + Duration::from_hours(24),
             last_progress: Instant::now(),
             ping: None,
             scopes: vec!["team".to_owned()],
@@ -1416,7 +1408,7 @@ mod tests {
         std::fs::set_permissions(&directory, std::fs::Permissions::from_mode(0o700))
             .expect("private directory");
         let missing = directory.join("missing");
-        let config = Config::parse(&serde_json::to_vec(&json!({"machineId":"alpha","socketPath":directory.join("s"),"scopeIds":["team"],"policies":[{"machineId":"beta","scopeId":"team","permissions":["discover","push"]}],"remote":{"machineId":"beta","endpoint":{"mode":"connect","address":"127.0.0.1:9"},"rootCertificates":[missing],"certificateChain":[missing],"privateKey":missing,"crls":[missing],"revocationState":missing}})).expect("config JSON")).expect("remote config");
+        let config = Config::parse(&serde_json::to_vec(&json!({"machineId":"alpha","socketPath":directory.join("s"),"scopeIds":["team"],"policies":[{"machineId":"beta","scopeId":"team","permissions":["discover","push"]}],"remote":{"machineId":"beta","endpoint":{"mode":"connect","address":"127.0.0.1:9"},"privateKey":missing,"peerPublicKey":"ab".repeat(32)}})).expect("config JSON")).expect("remote config");
         let daemon = Daemon::bind(config).expect("remote side degrades, local binds");
         assert!(
             daemon.remote_degraded_reason().is_some(),

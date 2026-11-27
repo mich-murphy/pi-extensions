@@ -12,12 +12,6 @@ pub mod managed;
 mod transport;
 pub mod wire;
 
-pub mod tls;
-
-pub mod revocation;
-
-pub mod lease;
-
 pub mod remote;
 
 mod link;
@@ -25,7 +19,5 @@ mod link;
 mod pinned;
 
 mod paths;
-
-pub mod pairing;
 
 pub mod control;

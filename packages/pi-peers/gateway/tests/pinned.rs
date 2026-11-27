@@ -271,10 +271,7 @@ fn pinned_config_is_strict_and_never_mixes_with_certificate_fields() {
         .as_object_mut()
         .expect("object")
         .remove("peerPublicKey");
-    assert!(
-        !parses(&config(&value)),
-        "without a pin, the certificate fields are all required"
-    );
+    assert!(!parses(&config(&value)), "the pin is required");
     let mut value = valid;
     value["endpoint"] = json!({"mode":"connect","address":"127.0.0.1:0"});
     assert!(!parses(&config(&value)), "connector port 0");
@@ -286,7 +283,7 @@ fn pinning_our_own_key_or_an_unusable_key_never_prepares() {
     let (key, public) = dir.key("alpha.key");
     assert!(
         settings(&key, "beta", &public, "connect", "127.0.0.1:7000")
-            .prepare("alpha")
+            .prepare()
             .is_err(),
         "a gateway that pins its own key would accept a reflected connection"
     );
@@ -294,7 +291,7 @@ fn pinning_our_own_key_or_an_unusable_key_never_prepares() {
     fs::set_permissions(&key, fs::Permissions::from_mode(0o640)).expect("chmod");
     assert!(
         settings(&key, "beta", &beta, "connect", "127.0.0.1:7000")
-            .prepare("alpha")
+            .prepare()
             .is_err(),
         "group-readable key"
     );
@@ -306,7 +303,7 @@ fn pinning_our_own_key_or_an_unusable_key_never_prepares() {
             "connect",
             "127.0.0.1:7000"
         )
-        .prepare("alpha")
+        .prepare()
         .is_err(),
         "missing key"
     );
@@ -347,10 +344,10 @@ async fn attempt(
         .expect("loopback listener");
     let address = listener.local_addr().expect("bound address").to_string();
     let client = settings(client_key, "beta", client_pin, "connect", &address)
-        .prepare("alpha")
+        .prepare()
         .expect("connector prepares");
     let server = settings(server_key, "alpha", server_pin, "listen", &address)
-        .prepare("beta")
+        .prepare()
         .expect("listener prepares");
     tokio::join!(client.connect(), async {
         server
@@ -364,7 +361,7 @@ async fn usable(side: std::io::Result<pi_gateway::remote::Authenticated>) -> boo
     let Ok(authenticated) = side else {
         return false;
     };
-    let (mut stream, _lease) = authenticated.into_parts();
+    let mut stream = authenticated.into_stream();
     let mut byte = [0];
     matches!(
         tokio::time::timeout(Duration::from_secs(3), stream.read(&mut byte)).await,
@@ -376,8 +373,8 @@ async fn usable(side: std::io::Result<pi_gateway::remote::Authenticated>) -> boo
 async fn matching_pins_link_with_raw_keys_over_tls13_and_exchange_bytes() {
     let keys = keys();
     let (client, server) = attempt(&keys.alpha.0, &keys.beta.1, &keys.beta.0, &keys.alpha.1).await;
-    let (mut client, _) = client.expect("connector authenticated").into_parts();
-    let (mut server, _) = server.expect("listener authenticated").into_parts();
+    let mut client = client.expect("connector authenticated").into_stream();
+    let mut server = server.expect("listener authenticated").into_stream();
     for (stream, presented) in [(&client, &keys.beta.1), (&server, &keys.alpha.1)] {
         let state = stream.get_ref().1;
         assert_eq!(
@@ -441,7 +438,7 @@ async fn a_certificate_presenting_peer_cannot_link_to_a_pinned_listener() {
         .expect("loopback listener");
     let address = listener.local_addr().expect("bound address").to_string();
     let server = settings(&keys.beta.0, "alpha", &keys.alpha.1, "listen", &address)
-        .prepare("beta")
+        .prepare()
         .expect("listener prepares");
     // An ordinary X.509 TLS 1.3 client that would accept anything still cannot link.
     let mut client = rustls::ClientConfig::builder_with_provider(Arc::new(
@@ -484,32 +481,35 @@ async fn a_pinned_connector_cannot_link_to_a_certificate_presenting_server() {
         .expect("loopback listener");
     let address = listener.local_addr().expect("bound address").to_string();
     let client = settings(&keys.alpha.0, "beta", &keys.beta.1, "connect", &address)
-        .prepare("alpha")
+        .prepare()
         .expect("connector prepares");
-    // An ordinary X.509 TLS 1.3 server whose certificate carries a fresh key.
-    let key = rcgen::KeyPair::generate().expect("server key");
-    let certificate = rcgen::CertificateParams::new(vec!["gateway.beta.pi.internal".to_owned()])
-        .expect("server name")
-        .self_signed(&key)
-        .expect("self-signed certificate");
+    // An ordinary X.509 TLS 1.3 server holding even the pinned key itself. Certificate-type
+    // negotiation refuses it before any certificate bytes are read, so the bytes are the SPKI.
+    let key = rustls::crypto::ring::sign::any_eddsa_type(
+        &rustls::pki_types::PrivatePkcs8KeyDer::from(fs::read(&keys.beta.0).expect("beta key")),
+    )
+    .expect("Ed25519 signing key");
+    let certified = rustls::sign::CertifiedKey::new(
+        vec![rustls::pki_types::CertificateDer::from(spki(&keys.beta.1))],
+        key,
+    );
     let server = rustls::ServerConfig::builder_with_provider(Arc::new(
         rustls::crypto::ring::default_provider(),
     ))
     .with_protocol_versions(&[&rustls::version::TLS13])
     .expect("TLS 1.3")
     .with_no_client_auth()
-    .with_single_cert(
-        vec![certificate.der().clone()],
-        rustls::pki_types::PrivateKeyDer::try_from(key.serialize_der()).expect("server key DER"),
-    )
-    .expect("X.509 server");
+    .with_cert_resolver(Arc::new(rustls::sign::SingleCertAndKey::from(certified)));
     let (client, server) = tokio::join!(client.connect(), async {
         let stream = listener.accept().await.expect("accepted TCP").0;
         tokio_rustls::TlsAcceptor::from(Arc::new(server))
             .accept(stream)
             .await
     });
-    assert!(client.is_err(), "a certificate is never a pinned raw key");
+    assert!(
+        client.is_err(),
+        "an X.509 server is refused, even holding the pinned key"
+    );
     assert!(server.is_err(), "the server cannot negotiate raw keys");
 }
 
@@ -700,3 +700,105 @@ fn an_unusable_or_self_pinned_key_degrades_remote_but_local_still_serves() {
         let _ = fs::remove_file(dir.path("alpha.sock"));
     }
 }
+
+/// Reads frames for `window` and returns every `link.state` the session hears, in order.
+fn link_states(stream: &mut UnixStream, window: Duration) -> Vec<String> {
+    let quiet = Some(Duration::from_millis(100));
+    stream.set_read_timeout(quiet).expect("short read deadline");
+    let until = Instant::now() + window;
+    let mut states = Vec::new();
+    while Instant::now() < until {
+        let mut length = [0; 4];
+        match stream.read_exact(&mut length) {
+            Ok(()) => {}
+            Err(error)
+                if matches!(
+                    error.kind(),
+                    std::io::ErrorKind::WouldBlock | std::io::ErrorKind::TimedOut
+                ) =>
+            {
+                continue;
+            }
+            Err(error) => panic!("link state stream ended: {error}"),
+        }
+        stream
+            .set_read_timeout(Some(Duration::from_secs(2)))
+            .expect("frame read deadline");
+        let mut body = vec![0; usize::try_from(u32::from_be_bytes(length)).expect("length")];
+        stream.read_exact(&mut body).expect("frame body");
+        stream.set_read_timeout(quiet).expect("short read deadline");
+        let frame: Value = serde_json::from_slice(&body).expect("frame JSON");
+        if frame["op"] == "link.state" {
+            states.push(frame["state"].as_str().expect("link state").to_owned());
+        }
+    }
+    states
+}
+
+#[test]
+fn a_connector_whose_key_the_listener_refuses_never_reports_the_link_up() {
+    let dir = Dir::new();
+    let (alpha_key, _) = dir.key("alpha.key");
+    let (beta_key, beta_public) = dir.key("beta.key");
+    let (_, gamma_public) = dir.key("gamma.key");
+    // Beta pins gamma, so alpha's TLS 1.3 client handshake completes on alpha's side
+    // before beta verifies alpha's key and refuses it.
+    let beta = Gateway::start(
+        &dir,
+        "beta",
+        &remote(&beta_key, "alpha", &gamma_public, "listen", "127.0.0.1:0"),
+    );
+    let address = beta.ready["remoteListenAddress"]
+        .as_str()
+        .expect("listener reports its port");
+    let _alpha = Gateway::start(
+        &dir,
+        "alpha",
+        &remote(&alpha_key, "beta", &beta_public, "connect", address),
+    );
+    let mut session = register(&dir, "alpha");
+    let states = link_states(&mut session, Duration::from_secs(4));
+    assert!(!states.is_empty(), "the session hears the link state");
+    assert!(
+        !states.iter().any(|state| state == "up"),
+        "a link the peer refuses is never reported up: {states:?}"
+    );
+}
+
+#[test]
+fn an_old_certificate_config_never_starts_and_diagnose_names_it() {
+    let dir = Dir::new();
+    let old = json!({"machineId":"beta","endpoint":{"mode":"listen","address":"127.0.0.1:0"},"rootCertificates":[dir.path("root.der")],"certificateChain":[dir.path("leaf.der")],"privateKey":dir.path("key.der"),"crls":[dir.path("current.crl")],"revocationState":dir.path("floors.json")});
+    let config = json!({"machineId":"alpha","socketPath":dir.path("alpha.sock"),"scopeIds":["team"],"policies":[{"machineId":"beta","scopeId":"team","permissions":["discover"]}],"remote":old});
+    let path = dir.path("alpha-config.json");
+    fs::write(&path, serde_json::to_vec(&config).expect("config JSON")).expect("config");
+    let started = Command::new(env!("CARGO_BIN_EXE_pi-gateway"))
+        .arg("--config")
+        .arg(&path)
+        .output()
+        .expect("run gateway");
+    assert!(!started.status.success(), "a CA-mode config fails closed");
+    assert!(started.stdout.is_empty(), "no ready line");
+    assert!(!dir.path("alpha.sock").exists(), "nothing bound");
+    assert_eq!(
+        diagnose(&dir, "alpha"),
+        json!({"version":1,"machineId":"alpha","remote":{"state":"retired-certificates"}})
+    );
+    // Any other defect is still a plain configuration error, not this report.
+    let mut broken = config;
+    broken["policies"] = json!([]);
+    fs::write(&path, serde_json::to_vec(&broken).expect("config JSON")).expect("config");
+    let output = Command::new(env!("CARGO_BIN_EXE_pi-gateway"))
+        .arg("--diagnose")
+        .arg(&path)
+        .output()
+        .expect("diagnose");
+    assert!(
+        !output.status.success(),
+        "a remote without a policy is invalid"
+    );
+    assert!(output.stdout.is_empty());
+}
+
+#[path = "cases/remote_process.rs"]
+mod remote_process;

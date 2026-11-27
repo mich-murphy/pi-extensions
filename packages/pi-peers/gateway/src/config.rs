@@ -192,6 +192,51 @@ impl Config {
     }
 }
 
+/// Certificate fields of the retired private-CA remote; their presence marks an old config.
+const RETIRED_REMOTE_FIELDS: [&str; 5] = [
+    "rootCertificates",
+    "certificateChain",
+    "issuerCertificates",
+    "crls",
+    "revocationState",
+];
+
+/// The `--diagnose` report for a configuration that [`Config::read`] refused only because its
+/// remote still uses retired private-CA certificates; `None` for any other refusal.
+///
+/// Such a configuration never starts. The report lets setup guide re-linking with keys.
+pub fn retired_certificates(path: &Path) -> Option<serde_json::Value> {
+    use std::io::Read;
+    if !path.is_absolute() {
+        return None;
+    }
+    let mut bytes = Vec::new();
+    std::fs::File::open(path)
+        .ok()?
+        .take(32_765)
+        .read_to_end(&mut bytes)
+        .ok()?;
+    let mut value = wire::decode_json(&bytes, Role::LocalClient).ok()?;
+    let remote = value.get_mut("remote")?.as_object_mut()?;
+    if !RETIRED_REMOTE_FIELDS
+        .iter()
+        .any(|field| remote.contains_key(*field))
+    {
+        return None;
+    }
+    // Only the retired fields may be wrong: the rest must parse once they are removed.
+    for field in RETIRED_REMOTE_FIELDS {
+        remote.remove(field);
+    }
+    remote
+        .entry("peerPublicKey")
+        .or_insert_with(|| serde_json::Value::String("00".repeat(32)));
+    let config = Config::parse(&serde_json::to_vec(&value).ok()?).ok()?;
+    Some(
+        serde_json::json!({"version":1,"machineId":config.machine_id,"remote":{"state":"retired-certificates"}}),
+    )
+}
+
 impl Config {
     /// Reports a read-only credential snapshot, never proof of a running gateway or link.
     ///
@@ -200,8 +245,8 @@ impl Config {
     pub fn diagnose(&self) -> std::io::Result<serde_json::Value> {
         let remote = match &self.remote {
             None => serde_json::json!({"state":"disabled"}),
-            Some(settings) => match settings.clone().diagnose(&self.machine_id) {
-                Ok(prepared) => prepared.diagnostic()?,
+            Some(settings) => match settings.clone().prepare() {
+                Ok(prepared) => prepared.diagnostic(),
                 Err(error) => match crate::remote::degradation(&error) {
                     Some(reason) => serde_json::json!({"state":"degraded", "reason":reason}),
                     None => return Err(error),

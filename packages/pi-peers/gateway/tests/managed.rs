@@ -359,7 +359,6 @@ fn manual_mode_remains_idle_and_version_is_side_effect_free() {
         value["capabilities"],
         json!([
             "managed-on-demand-v1",
-            "pairing-v1",
             "gateway-control-v1",
             "setup-lock-v1",
             "config-generation-v1",
@@ -446,84 +445,30 @@ fn recorded_live_socket_with_saturated_backlog_is_rejected_promptly() {
     fixture.kill(owner);
 }
 
-/// Generates only isolated test credentials, and returns beta's connecting settings.
-fn configure_remote(fixture: &Fixture) -> pi_gateway::remote::Settings {
-    use rcgen::{
-        BasicConstraints, CertificateParams, CertificateRevocationListParams,
-        ExtendedKeyUsagePurpose, IsCa, Issuer, KeyIdMethod, KeyPair, KeyUsagePurpose,
-    };
-    use time::{Duration as TimeDuration, OffsetDateTime};
-    let now = OffsetDateTime::now_utc();
-    let mut ca = CertificateParams::new(Vec::<String>::new()).expect("CA params");
-    ca.distinguished_name
-        .push(rcgen::DnType::CommonName, "managed lifecycle test CA");
-    ca.is_ca = IsCa::Ca(BasicConstraints::Unconstrained);
-    ca.key_usages = vec![KeyUsagePurpose::KeyCertSign, KeyUsagePurpose::CrlSign];
-    ca.not_before = now - TimeDuration::days(1);
-    ca.not_after = now + TimeDuration::days(7);
-    let ca_key = KeyPair::generate().expect("test CA key");
-    let root = ca.self_signed(&ca_key).expect("test root");
-    let issuer = Issuer::from_params(&ca, &ca_key);
-    let crl = CertificateRevocationListParams {
-        this_update: now - TimeDuration::hours(1),
-        next_update: now + TimeDuration::hours(12),
-        crl_number: 1_u64.into(),
-        issuing_distribution_point: None,
-        revoked_certs: vec![],
-        key_identifier_method: KeyIdMethod::Sha256,
-    }
-    .signed_by(&issuer)
-    .expect("test CRL");
-    let mut settings = Vec::new();
-    for (own, peer) in [("alpha", "beta"), ("beta", "alpha")] {
-        let directory = fixture.directory.join(own);
-        fs::create_dir(&directory).expect("credential directory");
-        fs::set_permissions(&directory, fs::Permissions::from_mode(0o700))
-            .expect("private credentials");
-        let mut leaf =
-            CertificateParams::new(vec![format!("gateway.{own}.pi.internal")]).expect("leaf SAN");
-        leaf.not_before = now - TimeDuration::hours(1);
-        leaf.not_after = now + TimeDuration::days(1);
-        leaf.serial_number = Some(42_u64.into());
-        leaf.extended_key_usages = vec![
-            ExtendedKeyUsagePurpose::ClientAuth,
-            ExtendedKeyUsagePurpose::ServerAuth,
-        ];
-        let key = KeyPair::generate().expect("leaf key");
-        let certificate = leaf.signed_by(&key, &issuer).expect("signed leaf");
-        for (name, bytes) in [
-            ("root", root.der().to_vec()),
-            ("crl", crl.der().to_vec()),
-            ("leaf", certificate.der().to_vec()),
-            ("key", key.serialize_der()),
-        ] {
-            let path = directory.join(name);
-            fs::write(&path, bytes).expect("generated private credential");
-            fs::set_permissions(&path, fs::Permissions::from_mode(0o600)).expect("private file");
-        }
-        let floor = directory.join("floor");
-        drop(
-            pi_gateway::revocation::FloorStore::initialize(&floor)
-                .expect("explicit isolated floor bootstrap"),
-        );
-        settings.push(json!({"machineId":peer,"endpoint":{"mode":"listen","address":"127.0.0.1:0"},"rootCertificates":[directory.join("root")],"crls":[directory.join("crl")],"certificateChain":[directory.join("leaf")],"privateKey":directory.join("key"),"revocationState":floor}));
-    }
+/// Generates only isolated test keys, and returns beta's connecting key and alpha's public key.
+fn configure_remote(fixture: &Fixture) -> (PathBuf, String) {
+    let directory = fixture.directory.join("keys");
+    fs::create_dir(&directory).expect("key directory");
+    fs::set_permissions(&directory, fs::Permissions::from_mode(0o700)).expect("private keys");
+    let alpha_key = directory.join("alpha.key");
+    let beta_key = directory.join("beta.key");
+    let alpha = pi_gateway::keys::generate(&alpha_key).expect("alpha key");
+    let beta = pi_gateway::keys::generate(&beta_key).expect("beta key");
     let path = fixture.directory.join("config");
     let mut config: Value =
         serde_json::from_slice(&fs::read(&path).expect("fixture config")).expect("JSON");
-    config["remote"] = settings[0].clone();
+    config["remote"] = json!({"machineId":"beta","endpoint":{"mode":"listen","address":"127.0.0.1:0"},"privateKey":alpha_key,"peerPublicKey":beta});
     config["policies"] = json!([{"machineId":"beta","scopeId":"team","permissions":["discover"]}]);
     fs::write(path, serde_json::to_vec(&config).expect("updated JSON"))
         .expect("remote fixture config");
-    pi_gateway::remote::Settings::parse(&serde_json::to_vec(&settings[1]).expect("settings JSON"))
-        .expect("strict remote settings")
+    (beta_key, alpha)
 }
 
 #[tokio::test]
 async fn authenticated_remote_link_does_not_sustain_last_local_disconnect() {
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
     let mut fixture = Fixture::new();
-    configure_remote(&fixture);
+    let (beta_key, alpha_public) = configure_remote(&fixture);
     let index = fixture.spawn(&["--managed"]);
     let stdout = fixture.children[index]
         .stdout
@@ -551,33 +496,18 @@ async fn authenticated_remote_link_does_not_sustain_last_local_disconnect() {
         panic!("remote startup failed: {error}");
     }
     let ready: Value = serde_json::from_str(&line).expect("ready JSON");
-    // Parse the same generated settings after replacing the endpoint with the
-    // actual port; this keeps all normal credential/floor validation enabled.
-    let config: Value =
-        serde_json::from_slice(&fs::read(fixture.directory.join("config")).expect("config"))
-            .expect("JSON");
-    let mut beta = config["remote"].clone();
-    let beta_dir = fixture.directory.join("beta");
-    beta["machineId"] = json!("alpha");
-    beta["endpoint"] = json!({"mode":"connect","address":ready["remoteListenAddress"]});
-    beta["rootCertificates"] = json!([beta_dir.join("root")]);
-    beta["crls"] = json!([beta_dir.join("crl")]);
-    beta["certificateChain"] = json!([beta_dir.join("leaf")]);
-    beta["privateKey"] = json!(beta_dir.join("key"));
-    beta["revocationState"] = json!(beta_dir.join("floor"));
+    let beta = json!({"machineId":"alpha","endpoint":{"mode":"connect","address":ready["remoteListenAddress"]},"privateKey":beta_key,"peerPublicKey":alpha_public});
     let settings =
         pi_gateway::remote::Settings::parse(&serde_json::to_vec(&beta).expect("beta settings"))
             .expect("beta strict config");
     let mut local = fixture.connect();
     register(&mut local, "local");
-    let prepared = settings
-        .prepare("beta")
-        .expect("test-only remote preparation");
-    let (mut remote, _lease) = tokio::time::timeout(Duration::from_secs(3), prepared.connect())
+    let prepared = settings.prepare().expect("test-only remote preparation");
+    let mut remote = tokio::time::timeout(Duration::from_secs(3), prepared.connect())
         .await
         .expect("bounded mTLS")
         .expect("authenticated remote")
-        .into_parts();
+        .into_stream();
     let mut header = [0; 4];
     tokio::time::timeout(Duration::from_secs(3), remote.read_exact(&mut header))
         .await

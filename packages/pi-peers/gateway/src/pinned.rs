@@ -41,6 +41,8 @@ pub(crate) fn client_config(
         ));
     config.resumption = rustls::client::Resumption::disabled();
     config.enable_early_data = false;
+    // The pinned key is the only identity; a server name would only leak the peer's ID.
+    config.enable_sni = false;
     Ok(config)
 }
 

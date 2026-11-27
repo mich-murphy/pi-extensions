@@ -27,10 +27,7 @@ impl Daemon {
         self.clients
             .iter()
             .find(|(_, client)| {
-                client
-                    .remote
-                    .as_ref()
-                    .is_some_and(|remote| remote.expires > Instant::now())
+                client.remote.as_ref().is_some()
                     && client.source.active()
                     && !client.failed
                     && !client.closing
@@ -97,18 +94,12 @@ impl Daemon {
         let (output, receiver) = mpsc::channel(256);
         let accounting = self.buffers.clone();
         let events = events.clone();
-        let (stream, lease) = authenticated.into_parts();
+        let stream = authenticated.into_stream();
         let source = SourceEpoch::new();
         let withdrawal = source.shared_guard();
-        let expires = lease.deadline();
         let abort = tasks.spawn(async move {
             let _withdrawal = withdrawal;
-            lease
-                .guard(
-                    transport::connection(id, stream, accounting, events, receiver),
-                    std::future::pending(),
-                )
-                .await;
+            transport::connection(id, stream, accounting, events, receiver).await;
             id
         });
         let snapshot_rid = random_id()?;
@@ -127,7 +118,6 @@ impl Daemon {
                     snapshot_rid: snapshot_rid.clone(),
                     scopes: scopes.clone(),
                     established: false,
-                    expires,
                     last_progress: Instant::now(),
                     ping: None,
                     refs: crate::intern::Refs::default(),
@@ -149,11 +139,24 @@ impl Daemon {
             .remote
             .as_ref()
             .is_some_and(|remote| remote.machine_id() == machine)
-            && self.remote_id().is_none()
+            && !self.remote_established()
+    }
+    /// Whether the active remote link has received the peer's roster snapshot.
+    ///
+    /// A TLS 1.3 client finishes its handshake before the server verifies the client key, so an
+    /// activated connection can still be refused. Only the peer's snapshot proves it accepted us.
+    fn remote_established(&self) -> bool {
+        self.remote_id().is_some_and(|id| {
+            self.clients
+                .get(&id)
+                .and_then(|client| client.remote.as_ref())
+                .is_some_and(|remote| remote.established)
+        })
     }
     fn link_view(&self) -> LinkView {
         match &self.link {
-            Some(_) if self.remote_id().is_some() => LinkView::Up,
+            Some(_) if self.remote_established() => LinkView::Up,
+            Some(_) if self.remote_id().is_some() => LinkView::Probing,
             Some(link) if link.breaker().view() == LinkView::Up => LinkView::Probing,
             Some(link) => link.breaker().view(),
             None => LinkView::Down,
@@ -227,16 +230,13 @@ impl Daemon {
                 self.clients
                     .values()
                     .filter_map(|client| client.remote.as_ref())
-                    .flat_map(|remote| {
-                        [
-                            remote.expires,
-                            remote.last_progress
-                                + if remote.ping.is_some() {
-                                    CLOSE_AFTER
-                                } else {
-                                    PING_AFTER
-                                },
-                        ]
+                    .map(|remote| {
+                        remote.last_progress
+                            + if remote.ping.is_some() {
+                                CLOSE_AFTER
+                            } else {
+                                PING_AFTER
+                            }
                     }),
             )
             .min()
@@ -283,10 +283,10 @@ impl Daemon {
     pub(super) fn remote_frame(&mut self, id: ConnectionId, request: Value) {
         if self.clients.get(&id).is_none_or(|client| {
             !client.source.active()
-                || client.remote.as_ref().is_none_or(|remote| {
-                    remote.expires <= Instant::now()
-                        || remote.last_progress.elapsed() >= CLOSE_AFTER
-                })
+                || client
+                    .remote
+                    .as_ref()
+                    .is_none_or(|remote| remote.last_progress.elapsed() >= CLOSE_AFTER)
         }) {
             self.fail(id);
             return;

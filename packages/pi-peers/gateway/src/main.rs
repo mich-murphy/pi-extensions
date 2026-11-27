@@ -23,15 +23,12 @@ async fn main() -> io::Result<()> {
         if json.is_some() {
             serde_json::to_writer(
                 &mut stdout,
-                &serde_json::json!({"name":"pi-gateway","version":env!("CARGO_PKG_VERSION"),"wireVersions":[2],"capabilities":["managed-on-demand-v1","pairing-v1","gateway-control-v1","setup-lock-v1","config-generation-v1","pinned-keys-v1"]}),
+                &serde_json::json!({"name":"pi-gateway","version":env!("CARGO_PKG_VERSION"),"wireVersions":[2],"capabilities":["managed-on-demand-v1","gateway-control-v1","setup-lock-v1","config-generation-v1","pinned-keys-v1"]}),
             )?;
         } else {
             write!(stdout, "pi-gateway {}", env!("CARGO_PKG_VERSION"))?;
         }
         return stdout.write_all(b"\n");
-    }
-    if command.as_deref() == Some(std::ffi::OsStr::new("pair")) {
-        return pair(arguments);
     }
     if command.as_deref() == Some(std::ffi::OsStr::new("key")) {
         return key(arguments);
@@ -42,17 +39,11 @@ async fn main() -> io::Result<()> {
     }
     if !matches!(
         command.as_deref().and_then(|value| value.to_str()),
-        Some(
-            "--config"
-                | "--initialize-revocation-floor"
-                | "--diagnose"
-                | "--request-restart"
-                | "--setup-lock"
-        )
+        Some("--config" | "--diagnose" | "--request-restart" | "--setup-lock")
     ) {
         return Err(io::Error::new(
             io::ErrorKind::InvalidInput,
-            "usage: pi-gateway --config <absolute-path> | --initialize-revocation-floor <absolute-path>",
+            "usage: pi-gateway [--managed] --config <absolute-path> | --diagnose <absolute-path> | key generate|show --input <absolute-path>",
         ));
     }
     let path = PathBuf::from(
@@ -72,14 +63,22 @@ async fn main() -> io::Result<()> {
             "--managed requires --config",
         ));
     }
-    if command.as_deref() == Some(std::ffi::OsStr::new("--initialize-revocation-floor")) {
-        drop(pi_gateway::revocation::FloorStore::initialize(&path)?);
-        return Ok(());
-    }
     if command.as_deref() == Some(std::ffi::OsStr::new("--setup-lock")) {
         return pi_gateway::control::setup_lock(&path);
     }
-    let config = Config::read(&path).map_err(io::Error::other)?;
+    let config = match Config::read(&path) {
+        Ok(config) => config,
+        Err(error) => {
+            // An old private-CA config never starts; diagnose names it so setup can re-link.
+            if command.as_deref() == Some(std::ffi::OsStr::new("--diagnose"))
+                && let Some(report) = pi_gateway::config::retired_certificates(&path)
+            {
+                serde_json::to_writer(io::stdout().lock(), &report)?;
+                return io::stdout().write_all(b"\n");
+            }
+            return Err(io::Error::other(error));
+        }
+    };
     if command.as_deref() == Some(std::ffi::OsStr::new("--request-restart")) {
         pi_gateway::control::request_restart(&config).await?;
         serde_json::to_writer(
@@ -130,13 +129,6 @@ async fn serve(config: Config, mode: Mode) -> io::Result<()> {
     } else {
         daemon.run(shutdown).await
     }
-}
-
-fn pair(arguments: impl Iterator<Item = std::ffi::OsString>) -> io::Result<()> {
-    let (operation, bytes) = input("pair", arguments)?;
-    let output = pi_gateway::pairing::execute(&operation, &bytes)?;
-    serde_json::to_writer(io::stdout().lock(), &output)?;
-    io::stdout().write_all(b"\n")
 }
 
 fn key(arguments: impl Iterator<Item = std::ffi::OsString>) -> io::Result<()> {
