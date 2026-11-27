@@ -353,7 +353,7 @@ describe("Hegel v16 bounded protocol properties", () => {
 
   test("stableValue key order is independent of insertion order and locale", () => {
     new Hegel((tc) => {
-      const keys = tc.draw(arrays(objectKey, { maxSize: 6, unique: true }), "keys");
+      const keys = [...new Set(tc.draw(arrays(objectKey, { maxSize: 6 }), "keys"))];
       const order = tc.draw(permutations(keys.map((_, index) => index)), "order");
       const entries = keys.map((key, index): [string, Schema.Json] => [key, { [key]: index }]);
       const shuffled = order.map((index) => at(entries, index));
