@@ -39,7 +39,7 @@ export function stableValue(value: Schema.Json): Schema.Json {
   if (isJsonObject(value)) {
     return Object.fromEntries(
       Object.entries(value)
-        .toSorted(([left], [right]) => left.localeCompare(right))
+        .toSorted(([left], [right]) => (left < right ? -1 : 1))
         .map(([name, child]) => [name, stableValue(child)]),
     );
   }

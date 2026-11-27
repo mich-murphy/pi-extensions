@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { Schema } from "effect";
 import { describe, expect, test } from "vitest";
-import { sameMessage, samePeer, scopedMessageKey } from "../protocol/identity.js";
+import { sameMessage, samePeer, scopedMessageKey, stableValue } from "../protocol/identity.js";
 import { decodeJson, ProtocolError } from "../protocol/json.js";
 import { decodeFrame } from "../protocol/wire.js";
 
@@ -79,5 +79,13 @@ describe("v16 shared exact-byte conformance", () => {
     expect(sameMessage({ ...message, content: "é" }, { ...message, content: "e\u0301" })).toBe(
       false,
     );
+  });
+
+  test("stable key order does not depend on insertion order for keys that collate as equal", () => {
+    const forward = JSON.stringify(stableValue({ é: 1, é: 2, a: 3, B: 4 }));
+    const backward = JSON.stringify(stableValue({ B: 4, a: 3, é: 2, é: 1 }));
+
+    expect(forward).toBe(backward);
+    expect(forward).toBe('{"B":4,"a":3,"e\u0301":2,"\u00e9":1}');
   });
 });
