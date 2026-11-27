@@ -1,5 +1,6 @@
 //! Authenticated own-machine roster exchange and directional two-host routing.
 use std::io;
+use std::sync::Arc;
 use std::time::Duration;
 
 use serde_json::{Value, json};
@@ -7,15 +8,25 @@ use tokio::sync::mpsc;
 use tokio::task::JoinSet;
 use tokio::time::Instant;
 
-use super::{Client, Daemon, Remote, Watch, encoded_length, member, project, random_id};
+use super::{
+    Client, Daemon, MAX_CONNECTIONS, Refresh, Remote, Step, Watch, encoded_length, project,
+    random_id,
+};
 use crate::breaker::LinkView;
 use crate::budget::{BufferClass, ConnectionId, ConnectionKind};
+use crate::caps::Verb;
 use crate::config::Permission;
 use crate::remote::Authenticated;
+use crate::replies::{Answer, Full};
+use crate::tailscale::{Failure, Peer};
 use crate::transport::{self, Charge, Event, SourceEpoch};
 
 const PING_AFTER: Duration = Duration::from_secs(30);
 const CLOSE_AFTER: Duration = Duration::from_secs(90);
+/// How often a linked peer's identity and caps are asked for again.
+pub(super) const REFRESH_EVERY: Duration = Duration::from_secs(15);
+/// Consecutive failed refreshes that close the link.
+const REFRESH_FAILURES: u8 = 2;
 
 impl Daemon {
     pub(super) fn is_remote(&self, id: ConnectionId) -> bool {
@@ -68,14 +79,203 @@ impl Daemon {
             .iter()
             .filter(|scope| {
                 if self.is_remote(id) {
-                    machine == self.config.machine_id && self.config.remote_scopes().contains(scope)
-                } else {
+                    machine == self.config.machine_id
+                        && self.remote_allows(id, scope, Verb::Discover)
+                } else if machine == self.config.machine_id {
                     self.config.permits(machine, scope, Permission::Discover)
+                } else {
+                    // Imported from the remote, which already filtered by what it grants us.
+                    true
                 }
             })
             .cloned()
             .collect();
         project(descriptor, &scopes)
+    }
+    /// What the linked remote `id` may do here, from the caps tailscaled last reported.
+    pub(super) fn remote_allows(&self, id: ConnectionId, scope: &str, verb: Verb) -> bool {
+        self.clients
+            .get(&id)
+            .and_then(|client| client.remote.as_ref())
+            .is_some_and(|remote| remote.peer.caps.allows(scope, verb))
+    }
+    /// Whether a frame from remote `id` may reach a local session in `scope`: anything under
+    /// `push`; under `reply` only a `reply`, or an `update` with `replyTo`, answering a message
+    /// a local session sent that remote on this link. An admitted answer is counted at once.
+    pub(super) fn remote_admits(&mut self, id: ConnectionId, request: &Value, scope: &str) -> bool {
+        if self.remote_allows(id, scope, Verb::Push) {
+            return true;
+        }
+        let message = &request["message"];
+        let answer = match (message["kind"].as_str(), message.get("replyTo")) {
+            (Some("reply"), Some(_)) => Answer::Reply,
+            (Some("update"), Some(_)) => Answer::Update,
+            _ => return false,
+        };
+        if !self.remote_allows(id, scope, Verb::Reply)
+            || message["replyTo"]["sender"] != request["to"]
+        {
+            return false;
+        }
+        let Some(message_id) = message["replyTo"]["messageId"].as_str() else {
+            return false;
+        };
+        self.clients
+            .get_mut(&id)
+            .and_then(|client| client.remote.as_mut())
+            .is_some_and(|remote| {
+                remote.replies.answer(
+                    &request["from"],
+                    &request["to"],
+                    scope,
+                    message_id,
+                    answer,
+                    Instant::now(),
+                )
+            })
+    }
+    /// Records a local `sender`'s message to the remote `id`; whether a new entry was made.
+    pub(super) fn record_sent(
+        &mut self,
+        id: ConnectionId,
+        sender: &Value,
+        request: &Value,
+    ) -> Result<bool, Full> {
+        let Some(remote) = self
+            .clients
+            .get_mut(&id)
+            .and_then(|client| client.remote.as_mut())
+        else {
+            return Err(Full);
+        };
+        let result = remote.replies.sent(
+            sender,
+            &request["to"],
+            request["scopeId"].as_str().unwrap_or(""),
+            request["message"]["id"].as_str().unwrap_or(""),
+            Instant::now(),
+        );
+        if result.is_err() {
+            let stable_id = remote.peer.stable_id.clone();
+            self.events.emit(
+                &format!("reply_table_full:{stable_id}"),
+                json!({"event":"reply_table_full","stableId":stable_id,"entries":crate::replies::MAX_ENTRIES}),
+            );
+        }
+        result
+    }
+    /// Records a forward to a remote destination; `None` after refusing it as overloaded.
+    pub(super) fn record_for(
+        &mut self,
+        origin: ConnectionId,
+        destination: ConnectionId,
+        sender: &Value,
+        request: &Value,
+    ) -> Option<bool> {
+        if !self.is_remote(destination) {
+            return Some(false);
+        }
+        if let Ok(recorded) = self.record_sent(destination, sender, request) {
+            Some(recorded)
+        } else {
+            self.reject(origin, request, "overloaded", Some("receipts"));
+            None
+        }
+    }
+    pub(super) fn unrecord_sent(&mut self, id: ConnectionId, sender: &Value, request: &Value) {
+        if let Some(remote) = self
+            .clients
+            .get_mut(&id)
+            .and_then(|client| client.remote.as_mut())
+        {
+            remote.replies.unsent(
+                sender,
+                &request["to"],
+                request["scopeId"].as_str().unwrap_or(""),
+                request["message"]["id"].as_str().unwrap_or(""),
+            );
+        }
+    }
+    /// The registered peer of local connection `id`, or null.
+    pub(super) fn descriptor_peer(&self, id: ConnectionId) -> Value {
+        self.clients
+            .get(&id)
+            .and_then(|client| client.descriptor.as_ref())
+            .map_or(Value::Null, |descriptor| descriptor["peer"].clone())
+    }
+    /// One audit line per refused remote frame: who, which verb, scope and ids, and why.
+    /// Never the content or labels.
+    pub(super) fn audit_refusal(&mut self, id: ConnectionId, request: &Value, reason: &str) {
+        let stable_id = self
+            .clients
+            .get(&id)
+            .and_then(|client| client.remote.as_ref())
+            .map(|remote| remote.peer.stable_id.clone());
+        let message = &request["message"];
+        let verb = match (message["kind"].as_str(), message.get("replyTo")) {
+            (Some("reply"), _) | (Some("update"), Some(_)) => "reply",
+            (Some(_), _) => "push",
+            _ => request["op"].as_str().unwrap_or("unknown"),
+        };
+        self.events.emit(
+            &format!("refused:{reason}:{verb}"),
+            json!({"event":"refused","stableId":stable_id,"verb":verb,"scope":request["scopeId"],"rid":request["rid"],"messageId":message["id"],"reason":reason}),
+        );
+    }
+    /// The link-down audit line, with the identity the link was pinned to.
+    pub(super) fn audit_link_down(&mut self, id: ConnectionId) {
+        let Some(remote) = self
+            .clients
+            .get(&id)
+            .and_then(|client| client.remote.as_ref())
+        else {
+            return;
+        };
+        let peer = &remote.peer;
+        let line = json!({"event":"link_down","stableId":peer.stable_id,"name":peer.machine_id,"tags":peer.tags,"addresses":peer.addresses,"caps":peer.caps.digest(),"replies":remote.replies.len()});
+        let key = format!("link_down:{}", peer.stable_id);
+        self.events.emit(&key, line);
+    }
+    /// Takes one result of the link driver: an identified stream becomes the active remote
+    /// unless one already is; a refusal only names the peer for link state.
+    pub(super) fn link_step(
+        &mut self,
+        step: Step,
+        events: &mpsc::Sender<Event>,
+        tasks: &mut JoinSet<ConnectionId>,
+    ) -> io::Result<()> {
+        match step {
+            Step::Idle => {}
+            Step::Refused(refusal) => {
+                if let (Some(peer), Some(link)) = (&refusal.peer, self.link.as_mut()) {
+                    link.identified(&peer.machine_id);
+                }
+                self.events.emit(
+                    &format!("link_refused:{}", refusal.failure.detail()),
+                    json!({"event":"link_refused","reason":refusal.failure.detail(),"address":refusal.address,"stableId":refusal.peer.as_ref().map(|peer| &peer.stable_id)}),
+                );
+            }
+            Step::Linked(authenticated) => {
+                if self.remote_id().is_some() || tasks.len() > MAX_CONNECTIONS {
+                    self.events.emit(
+                        "link_refused:busy",
+                        json!({"event":"link_refused","reason":"busy","address":authenticated.peer.ip,"stableId":authenticated.peer.stable_id}),
+                    );
+                    if let Some(link) = self.link.as_mut() {
+                        link.handshake_failed();
+                    }
+                    return Ok(());
+                }
+                if let Some(link) = self.link.as_mut() {
+                    link.identified(&authenticated.peer.machine_id);
+                }
+                self.activate(*authenticated, events, tasks)?;
+                if let Some(link) = self.link.as_mut() {
+                    link.connected();
+                }
+            }
+        }
+        Ok(())
     }
     pub(super) fn activate(
         &mut self,
@@ -94,7 +294,16 @@ impl Daemon {
         let (output, receiver) = mpsc::channel(256);
         let accounting = self.buffers.clone();
         let events = events.clone();
-        let stream = authenticated.into_stream();
+        let Authenticated {
+            stream,
+            peer,
+            local,
+            remote,
+        } = authenticated;
+        self.events.emit(
+            &format!("link_up:{}", peer.stable_id),
+            json!({"event":"link_up","stableId":peer.stable_id,"name":peer.machine_id,"loginName":peer.login_name,"tags":peer.tags,"addresses":peer.addresses,"local":local.to_string(),"remote":remote.to_string(),"caps":peer.caps.digest(),"ignored":peer.ignored.any().then(|| json!({"entries":peer.ignored.entries,"verbs":peer.ignored.verbs,"scopes":peer.ignored.scopes}))}),
+        );
         let source = SourceEpoch::new();
         let withdrawal = source.shared_guard();
         let abort = tasks.spawn(async move {
@@ -103,7 +312,14 @@ impl Daemon {
             id
         });
         let snapshot_rid = random_id()?;
-        let scopes = self.config.remote_scopes();
+        // The remote exports only what its own caps for this node allow.
+        let scopes = self.config.scope_ids.clone();
+        let listening = self.link.as_ref().is_some_and(|link| {
+            matches!(
+                link.prepared().endpoint(),
+                crate::remote::Endpoint::Listen { .. }
+            )
+        });
         self.clients.insert(
             id,
             Client {
@@ -120,7 +336,11 @@ impl Daemon {
                     established: false,
                     last_progress: Instant::now(),
                     ping: None,
+                    peer,
+                    refresh: Refresh::new(Instant::now()),
+                    replies: crate::replies::Replies::default(),
                     refs: crate::intern::Refs::default(),
+                    listening,
                 }),
                 closing: false,
                 failed: false,
@@ -135,16 +355,24 @@ impl Daemon {
     }
     /// Whether sends to `machine` are refused at once because its link is not up.
     pub(super) fn link_down(&self, machine: &str) -> bool {
-        self.config
+        self.link
+            .as_ref()
+            .and_then(crate::link::Driver::machine)
+            .is_some_and(|identified| identified == machine)
+            && !self.remote_established()
+    }
+    /// The identified peer of the active link.
+    pub(super) fn linked_machine(&self, id: ConnectionId) -> Option<&str> {
+        self.clients
+            .get(&id)?
             .remote
             .as_ref()
-            .is_some_and(|remote| remote.machine_id() == machine)
-            && !self.remote_established()
+            .map(|remote| remote.peer.machine_id.as_str())
     }
     /// Whether the active remote link has received the peer's roster snapshot.
     ///
-    /// A TLS 1.3 client finishes its handshake before the server verifies the client key, so an
-    /// activated connection can still be refused. Only the peer's snapshot proves it accepted us.
+    /// Our checks passing does not mean the peer's did: it may still refuse and close. Only the
+    /// peer's snapshot proves it accepted us.
     fn remote_established(&self) -> bool {
         self.remote_id().is_some_and(|id| {
             self.clients
@@ -164,7 +392,7 @@ impl Daemon {
     }
     /// The current link state frame for one opted-in local session, if a remote is configured.
     pub(super) fn link_frame(&self, rid: &str) -> Option<Value> {
-        let machine = self.config.remote.as_ref()?.machine_id();
+        let machine = self.link.as_ref()?.machine()?;
         let view = self.link_view();
         let since = self
             .link
@@ -184,10 +412,10 @@ impl Daemon {
     /// Pushes the link state to opted-in sessions and the operator log, exactly on a change.
     pub(super) fn announce_link(&mut self) {
         let Some(machine) = self
-            .config
-            .remote
+            .link
             .as_ref()
-            .map(|remote| remote.machine_id().to_owned())
+            .and_then(crate::link::Driver::machine)
+            .map(str::to_owned)
         else {
             return;
         };
@@ -230,6 +458,13 @@ impl Daemon {
                 self.clients
                     .values()
                     .filter_map(|client| client.remote.as_ref())
+                    .filter(|remote| !remote.refresh.running)
+                    .map(|remote| remote.refresh.due),
+            )
+            .chain(
+                self.clients
+                    .values()
+                    .filter_map(|client| client.remote.as_ref())
                     .map(|remote| {
                         remote.last_progress
                             + if remote.ping.is_some() {
@@ -240,6 +475,109 @@ impl Daemon {
                     }),
             )
             .min()
+    }
+    /// Starts a whois task for every linked peer whose refresh is due; never waits for it.
+    pub(super) fn refresh_due(&mut self, now: Instant) {
+        let prepared = self.link.as_ref().map(|link| Arc::clone(link.prepared()));
+        let mut due = Vec::new();
+        for (id, client) in &mut self.clients {
+            let Some(remote) = client.remote.as_mut() else {
+                continue;
+            };
+            if client.failed || remote.refresh.running || remote.refresh.due > now {
+                continue;
+            }
+            if prepared.is_some() {
+                remote.refresh.running = true;
+                due.push((*id, remote.peer.ip));
+            } else {
+                remote.refresh.due = now + REFRESH_EVERY;
+            }
+        }
+        let Some(prepared) = prepared else {
+            return;
+        };
+        for (id, ip) in due {
+            let prepared = Arc::clone(&prepared);
+            self.refreshes
+                .spawn(async move { (id, prepared.identify(ip).await) });
+        }
+    }
+    /// Applies one refresh: a vanished, expired, renamed or re-keyed node, two failures in a row
+    /// or, on the listening side, empty caps close the link; changed caps apply to the next
+    /// frame, and losing `discover` on a watched scope ends the remote's watch. A connector keeps
+    /// a link whose listener holds no caps: that remote may then do nothing here.
+    pub(super) fn refreshed(&mut self, id: ConnectionId, result: Result<Peer, Failure>) {
+        let Some(remote) = self
+            .clients
+            .get_mut(&id)
+            .filter(|client| !client.failed)
+            .and_then(|client| client.remote.as_mut())
+        else {
+            return;
+        };
+        remote.refresh.running = false;
+        remote.refresh.due = Instant::now() + REFRESH_EVERY;
+        let stable_id = remote.peer.stable_id.clone();
+        let verdict = match result {
+            Ok(peer) if peer.stable_id != stable_id => Err("stable-id-changed"),
+            Ok(peer) if peer.machine_id != remote.peer.machine_id => Err("name-changed"),
+            Ok(peer) if peer.caps.is_empty() && remote.listening => Err("no-caps"),
+            Ok(peer) => Ok(peer),
+            Err(failure @ (Failure::NotFound | Failure::Refused(_))) => Err(failure.detail()),
+            Err(failure) => {
+                remote.refresh.failures = remote.refresh.failures.saturating_add(1);
+                let failures = remote.refresh.failures;
+                self.events.emit(
+                    &format!("whois_failed:{}", failure.detail()),
+                    json!({"event":"whois_failed","stableId":stable_id,"reason":failure.detail(),"failures":failures}),
+                );
+                if failures >= REFRESH_FAILURES {
+                    self.revoke(id, &stable_id, "refresh-failed");
+                }
+                return;
+            }
+        };
+        let peer = match verdict {
+            Ok(peer) => peer,
+            Err(reason) => {
+                self.revoke(id, &stable_id, reason);
+                return;
+            }
+        };
+        remote.refresh.failures = 0;
+        let (before, after) = (remote.peer.caps.digest(), peer.caps.digest());
+        let discover = peer.caps.scopes(Verb::Discover);
+        remote.peer = peer;
+        if before == after {
+            return;
+        }
+        self.events.emit(
+            &format!("caps_changed:{stable_id}"),
+            json!({"event":"caps_changed","stableId":stable_id,"before":before,"after":after}),
+        );
+        let lost = self
+            .clients
+            .get(&id)
+            .and_then(|client| client.watch.as_ref())
+            .filter(|watch| watch.scopes.iter().any(|scope| !discover.contains(scope)))
+            .map(|watch| watch.rid.clone());
+        if let Some(rid) = lost {
+            if let Some(client) = self.clients.get_mut(&id) {
+                client.watch = None;
+            }
+            let invalidated = json!({"v":2,"op":"roster.event","rid":rid,"event":{"tag":"invalidated","reason":"policy_changed"}});
+            if !self.queue(id, &invalidated, BufferClass::Control, None) {
+                self.fail(id);
+            }
+        }
+    }
+    fn revoke(&mut self, id: ConnectionId, stable_id: &str, reason: &str) {
+        self.events.emit(
+            &format!("link_revoked:{reason}"),
+            json!({"event":"link_revoked","stableId":stable_id,"reason":reason}),
+        );
+        self.fail(id);
     }
     pub(super) fn liveness(&mut self) {
         let Some(id) = self.remote_id() else {
@@ -335,6 +673,7 @@ impl Daemon {
                 self.respond(id, &request, json!({"tag":"ok","value":{}}));
             }
             Some("state.get" | "state.list" | "interest.add" | "interest.remove") => {
+                self.audit_refusal(id, &request, "retired");
                 self.reject(id, &request, "forbidden", None);
             }
             Some("send") => {
@@ -348,11 +687,12 @@ impl Daemon {
                     self.fail(id);
                     return;
                 }
-                let valid_source =
-                    self.remote_descriptor(id, &request["from"])
-                        .is_some_and(|descriptor| {
-                            member(descriptor, request["scopeId"].as_str().unwrap_or(""))
-                        });
+                // The sender must be a session of the linked machine. Its roster here lists only
+                // the scopes this node may discover, so it cannot bound where the session sends;
+                // the caps it holds here and the reply table decide that.
+                let valid_source = self
+                    .linked_machine(id)
+                    .is_some_and(|machine| request["from"]["machineId"] == machine);
                 let duplicate = self.forwards.values().any(|forward| {
                     forward.origin == id && forward.request["rid"] == request["rid"]
                 }) || self
@@ -361,6 +701,8 @@ impl Daemon {
                     .and_then(|client| client.watch.as_ref())
                     .is_some_and(|watch| request["rid"] == watch.rid);
                 if !valid_source || duplicate {
+                    let reason = if valid_source { "duplicate" } else { "source" };
+                    self.audit_refusal(id, &request, reason);
                     self.fail(id);
                 } else {
                     self.forward(id, request);
@@ -369,7 +711,7 @@ impl Daemon {
             _ => self.fail(id),
         }
     }
-    fn export(&mut self, id: ConnectionId, request: &Value) {
+    pub(super) fn export(&mut self, id: ConnectionId, request: &Value) {
         if self
             .clients
             .get(&id)
@@ -380,7 +722,12 @@ impl Daemon {
             self.reject(id, request, "overloaded", Some("watch"));
             return;
         }
-        let allowed = self.config.remote_scopes();
+        let allowed = self
+            .clients
+            .get(&id)
+            .and_then(|client| client.remote.as_ref())
+            .map(|remote| remote.peer.caps.scopes(Verb::Discover))
+            .unwrap_or_default();
         let scopes: Vec<String> = request["scopeIds"]
             .as_array()
             .into_iter()
@@ -431,10 +778,8 @@ impl Daemon {
         }
     }
     fn valid_descriptor(&self, id: ConnectionId, descriptor: &Value) -> bool {
-        self.config
-            .remote
-            .as_ref()
-            .is_some_and(|remote| descriptor["peer"]["machineId"] == remote.machine_id())
+        self.linked_machine(id)
+            .is_some_and(|machine| descriptor["peer"]["machineId"] == machine)
             && self
                 .clients
                 .get(&id)
@@ -543,10 +888,8 @@ impl Daemon {
             &event["peer"]
         };
         if !self
-            .config
-            .remote
-            .as_ref()
-            .is_some_and(|remote| peer["machineId"] == remote.machine_id())
+            .linked_machine(id)
+            .is_some_and(|machine| peer["machineId"] == machine)
         {
             self.fail(id);
             return;

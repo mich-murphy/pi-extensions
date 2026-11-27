@@ -1,308 +1,262 @@
-//! Pinned-key remote settings, owner-only key loading and bounded TLS handshakes.
+//! Tailscale-identified remote settings and link setup over plain TCP.
 //!
-//! Every path is explicitly supplied, owner-only and opened without following a leaf symlink.
-//! The peer is identified only by the one Ed25519 public key the operator pinned.
+//! The peer's identity and permissions come only from the local tailscaled. Before any byte is
+//! read or written, both sides check that the socket's local address is one of this node's own
+//! tailnet IPs, that the peer is not this node, and that whois names a peer node at exactly the
+//! peer's IP. whois never resolves loopback, LAN or other-VPN addresses, so those paths fail
+//! closed. There is no bypass.
 use std::fmt;
-use std::fs::OpenOptions;
-use std::io::{self, Read};
-use std::net::SocketAddr;
-use std::os::unix::fs::{MetadataExt, OpenOptionsExt};
-use std::path::{Path, PathBuf};
-use std::sync::Arc;
+use std::io;
+use std::net::{IpAddr, SocketAddr};
+use std::path::PathBuf;
 use std::time::Duration;
 
-use rustls::pki_types::ServerName;
 use serde::Deserialize;
+use serde_json::{Value, json};
 use tokio::net::TcpStream;
-use tokio::time::Instant;
-use tokio_rustls::{TlsAcceptor, TlsConnector, TlsStream};
 
-use crate::keys::PUBLIC_KEY_LEN;
-use crate::wire::{self, Role};
+use crate::tailscale::{Cli, Failure, Peer, SelfNode};
 
-const HANDSHAKE: Duration = Duration::from_secs(5);
+/// One deadline for the status and whois calls and the TCP connect of a link setup.
+const SETUP: Duration = Duration::from_secs(5);
 
 /// Exactly one configured outbound initiator or inbound listener for the pair.
 #[derive(Debug, Clone, Copy, Deserialize)]
 #[serde(tag = "mode", rename_all = "lowercase", deny_unknown_fields)]
-#[non_exhaustive]
-pub enum Endpoint {
-    /// Initiates a TLS connection to this address; identity remains the pinned key.
-    Connect {
-        /// Explicit IP dial address, never an identity substitute.
-        address: SocketAddr,
-    },
-    /// Accepts streams from this operator-selected listening address.
-    Listen {
-        /// Explicit local IP listener address.
-        address: SocketAddr,
-    },
+pub(crate) enum Endpoint {
+    /// Dials this address; the peer is whoever whois says holds its IP.
+    Connect { address: SocketAddr },
+    /// Accepts streams on this address, which must be one of this node's tailnet IPs.
+    Listen { address: SocketAddr },
+}
+impl Endpoint {
+    fn report(self) -> Value {
+        match self {
+            Self::Connect { address } => json!({"mode":"connect","address":address.to_string()}),
+            Self::Listen { address } => json!({"mode":"listen","address":address.to_string()}),
+        }
+    }
 }
 
-/// Strict explicit single-peer daemon settings: one own key and one pinned peer key.
-#[derive(Clone, Deserialize)]
+/// Strict remote settings: where to link, and optionally which Tailscale CLI to trust.
+#[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct Settings {
-    machine_id: String,
+pub(crate) struct Settings {
     endpoint: Endpoint,
-    private_key: PathBuf,
-    peer_public_key: String,
-}
-impl fmt::Debug for Settings {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        formatter
-            .debug_struct("Settings")
-            .field("machine_id", &self.machine_id)
-            .field("endpoint", &self.endpoint)
-            .field("private_key", &"<redacted>")
-            .field("peer_public_key", &self.peer_public_key)
-            .finish()
-    }
+    #[serde(default)]
+    tailscale: Option<PathBuf>,
 }
 
+/// A resolved CLI for one configured endpoint.
 #[derive(Debug)]
-enum Crypto {
-    Connect(Arc<rustls::ClientConfig>),
-    Listen(Arc<rustls::ServerConfig>),
-}
-
-/// Prepared TLS configuration for one configured peer.
-pub struct Prepared {
-    machine_id: String,
+pub(crate) struct Prepared {
+    cli: Cli,
     endpoint: Endpoint,
-    crypto: Crypto,
-    own: [u8; PUBLIC_KEY_LEN],
-}
-impl fmt::Debug for Prepared {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        formatter
-            .debug_struct("Prepared")
-            .field("machine_id", &self.machine_id)
-            .field("endpoint", &self.endpoint)
-            .finish_non_exhaustive()
-    }
+    machine_id: String,
 }
 
-/// A completed mutual TLS handshake with the pinned peer key.
+/// A TCP stream whose peer passed every identity check, with what whois said about it.
 #[derive(Debug)]
-pub struct Authenticated {
-    stream: TlsStream<TcpStream>,
+pub(crate) struct Authenticated {
+    pub(crate) stream: TcpStream,
+    pub(crate) peer: Peer,
+    pub(crate) local: SocketAddr,
+    pub(crate) remote: SocketAddr,
 }
-impl Authenticated {
-    /// Transfers the authenticated stream to the bounded route owner. No routes are installed here.
-    pub fn into_stream(self) -> TlsStream<TcpStream> {
-        self.stream
+
+/// Why a link setup did not produce a link; `peer` is set once whois identified the target.
+#[derive(Debug)]
+pub(crate) struct Refusal {
+    pub(crate) failure: Failure,
+    pub(crate) peer: Option<Box<Peer>>,
+    pub(crate) address: Option<IpAddr>,
+}
+impl Refusal {
+    fn new(failure: Failure, address: Option<IpAddr>) -> Self {
+        Self {
+            failure,
+            peer: None,
+            address,
+        }
     }
 }
 
 impl Settings {
-    /// Parses bounded strict JSON without reading files or connecting to any address.
-    ///
-    /// # Errors
-    /// Rejects ambiguous JSON, unknown fields (including every retired certificate field),
-    /// an invalid machine identity, a relative key path and malformed public key text.
-    pub fn parse(bytes: &[u8]) -> io::Result<Self> {
-        let value = wire::decode_json(bytes, Role::LocalClient).map_err(io::Error::other)?;
-        let settings: Self = serde_json::from_value(value).map_err(io::Error::other)?;
-        settings.validate()?;
-        Ok(settings)
+    /// A CLI path must be absolute, and a dialed address must name a real port.
+    pub(crate) fn valid(&self) -> bool {
+        self.tailscale
+            .as_ref()
+            .is_none_or(|path| path.is_absolute())
+            && !matches!(self.endpoint, Endpoint::Connect { address } if address.port() == 0)
     }
 
-    /// Returns the independently configured authenticated remote machine.
-    pub fn machine_id(&self) -> &str {
-        &self.machine_id
-    }
-
-    pub(crate) fn validate(&self) -> io::Result<()> {
-        if !machine(&self.machine_id)
-            || !self.private_key.is_absolute()
-            || crate::keys::parse_public(&self.peer_public_key).is_none()
-        {
-            return Err(rejected());
-        }
-        // Port 0 asks the OS for an ephemeral listener port, reported at readiness. It is
-        // never a valid destination, so a connecting endpoint must name a real port.
-        if matches!(self.endpoint, Endpoint::Connect { address } if address.port() == 0) {
-            return Err(rejected());
-        }
-        Ok(())
-    }
-
-    /// Loads the own Ed25519 key and pins the configured peer key; reads nothing else.
-    ///
-    /// Startup file reads are bounded; this does not start a socket listener or daemon.
-    ///
-    /// # Errors
-    /// Rejects an unsafe or unusable key file and a peer key equal to the own key.
-    pub fn prepare(self) -> io::Result<Prepared> {
-        let peer = crate::keys::parse_public(&self.peer_public_key).ok_or_else(rejected)?;
-        let key = read_private(&self.private_key)
-            .map_err(|error| credential_error("private-key", error))?;
-        let own = crate::keys::public_key(&key)
-            .map_err(|error| credential_error("private-key", error))?;
-        // Pinning our own key would let a reflected connection authenticate as the peer.
-        if own == peer {
-            return Err(credential_error("identity", rejected()));
-        }
-        let crypto = match self.endpoint {
-            Endpoint::Connect { .. } => Crypto::Connect(Arc::new(
-                crate::pinned::client_config(key, &peer)
-                    .map_err(|error| credential_error("private-key", error))?,
-            )),
-            Endpoint::Listen { .. } => Crypto::Listen(Arc::new(
-                crate::pinned::server_config(key, &peer)
-                    .map_err(|error| credential_error("private-key", error))?,
-            )),
-        };
+    /// Resolves the trusted CLI; runs nothing and opens no socket.
+    pub(crate) fn prepare(&self, machine_id: &str) -> Result<Prepared, Failure> {
         Ok(Prepared {
-            machine_id: self.machine_id,
+            cli: Cli::resolve(self.tailscale.as_deref())?,
             endpoint: self.endpoint,
-            crypto,
-            own,
+            machine_id: machine_id.to_owned(),
         })
     }
-}
-impl Prepared {
-    /// The read-only `--diagnose` view of prepared credentials.
-    pub(crate) fn diagnostic(&self) -> serde_json::Value {
-        serde_json::json!({"state":"configured","trust":"pinned","publicKey":crate::keys::hex(&self.own)})
+
+    /// The `--diagnose` remote section: what this node is and, when dialing, who it would reach
+    /// and what that peer may do here. Never binds or connects.
+    pub(crate) async fn diagnose(&self, machine_id: &str) -> Value {
+        let degraded = |failure: Failure| json!({"state":"degraded","reason":failure.reason()});
+        let prepared = match self.prepare(machine_id) {
+            Ok(prepared) => prepared,
+            Err(failure) => return degraded(failure),
+        };
+        let own = match prepared.cli.status().await {
+            Ok(own) => own,
+            Err(failure) => return degraded(failure),
+        };
+        let mut report = json!({"state":"configured","trust":"tailscale","endpoint":self.endpoint.report(),"self":{"name":own.name,"stableId":own.stable_id,"addresses":own.addresses}});
+        match self.endpoint {
+            Endpoint::Listen { address } => {
+                if !own.addresses.contains(&address.ip().to_canonical()) {
+                    return degraded(Failure::NotFound);
+                }
+            }
+            Endpoint::Connect { address } => {
+                match prepared.cli.whois(address.ip(), &own, machine_id).await {
+                    Ok(peer) => {
+                        report["peer"] = json!({"name":peer.machine_id,"stableId":peer.stable_id,"tags":peer.tags,"allow":peer.caps.report()});
+                    }
+                    Err(failure) => return degraded(failure),
+                }
+            }
+        }
+        report
     }
+}
+
+fn own_address(own: &SelfNode, address: SocketAddr) -> bool {
+    own.addresses.contains(&address.ip().to_canonical())
+}
+
+impl Prepared {
     /// Returns the operator-selected single-pair connection role/address.
-    pub fn endpoint(&self) -> Endpoint {
+    pub(crate) fn endpoint(&self) -> Endpoint {
         self.endpoint
     }
 
-    /// Performs one TCP/TLS attempt under one five-second deadline.
-    ///
-    /// No retry loop is hidden here. The caller must enforce the C7 connection,
-    /// pending-handshake and reconnect-episode limits before starting this future.
-    ///
-    /// # Errors
-    /// Rejects listener-role misuse, transport/TLS failures, any key but the pinned one
-    /// and deadline expiry. Failure never installs a runtime route.
-    pub async fn connect(&self) -> io::Result<Authenticated> {
-        let (Endpoint::Connect { address }, Crypto::Connect(config)) =
-            (self.endpoint, &self.crypto)
-        else {
-            return Err(rejected());
-        };
-        let deadline = Instant::now() + HANDSHAKE;
-        tokio::time::timeout_at(deadline, async {
-            let stream = TcpStream::connect(address).await?;
-            // Raw public keys carry no name; SNI is disabled and this name is never checked.
-            let name = ServerName::try_from(format!("gateway.{}.pi.internal", self.machine_id))
-                .map_err(io::Error::other)?;
-            let stream = TlsConnector::from(Arc::clone(config))
-                .connect(name, stream)
-                .await?;
-            authorize(TlsStream::Client(stream))
-        })
-        .await
-        .map_err(io::Error::other)?
+    /// Asks tailscaled again who holds `ip` and what it may do here.
+    pub(crate) async fn identify(&self, ip: IpAddr) -> Result<Peer, Failure> {
+        let own = self.cli.status().await?;
+        self.cli.whois(ip, &own, &self.machine_id).await
     }
 
-    /// Authenticates one accepted TCP stream under one five-second handshake deadline.
+    /// Identifies the target, dials it and checks the socket, all before any byte is sent.
     ///
-    /// # Errors
-    /// Rejects initiator-role misuse and the same authentication failures as
-    /// [`Self::connect`]. The caller must bound accepted handshake tasks before invocation.
-    pub async fn accept(&self, stream: TcpStream) -> io::Result<Authenticated> {
-        let Crypto::Listen(config) = &self.crypto else {
-            return Err(rejected());
+    /// No retry loop is hidden here; the link breaker paces attempts.
+    pub(crate) async fn connect(&self) -> Result<Authenticated, Refusal> {
+        let Endpoint::Connect { address } = self.endpoint else {
+            return Err(Refusal::new(Failure::Error, None));
         };
-        tokio::time::timeout(HANDSHAKE, async {
-            let stream = TlsAcceptor::from(Arc::clone(config)).accept(stream).await?;
-            authorize(TlsStream::Server(stream))
+        let target = Some(address.ip().to_canonical());
+        tokio::time::timeout(SETUP, async {
+            let own = self
+                .cli
+                .status()
+                .await
+                .map_err(|failure| Refusal::new(failure, target))?;
+            let peer = self
+                .cli
+                .whois(address.ip(), &own, &self.machine_id)
+                .await
+                .map_err(|failure| Refusal::new(failure, target))?;
+            let refused = |detail, peer: &Peer| Refusal {
+                failure: Failure::Refused(detail),
+                peer: Some(Box::new(peer.clone())),
+                address: target,
+            };
+            let stream = TcpStream::connect(address)
+                .await
+                .map_err(|_| refused("unreachable", &peer))?;
+            let (Ok(local), Ok(remote)) = (stream.local_addr(), stream.peer_addr()) else {
+                return Err(refused("unreachable", &peer));
+            };
+            // The route must have gone through the Tailscale interface to the node whois named.
+            if !own_address(&own, local) {
+                return Err(refused("local-address", &peer));
+            }
+            if remote.ip().to_canonical() != peer.ip {
+                return Err(refused("address", &peer));
+            }
+            // A listener holding no caps here may do nothing here; the link still serves this
+            // node's sessions toward it, and every frame it sends is refused.
+            Ok(Authenticated {
+                stream,
+                peer,
+                local,
+                remote,
+            })
         })
         .await
-        .map_err(io::Error::other)?
+        .unwrap_or_else(|_| Err(Refusal::new(Failure::Refused("timeout"), target)))
     }
-}
-/// The handshake verifiers already accepted exactly the pinned key; nothing about it expires.
-fn authorize(stream: TlsStream<TcpStream>) -> io::Result<Authenticated> {
-    let common = stream.get_ref().1;
-    if common.is_handshaking() || common.peer_certificates().is_none() {
-        return Err(rejected());
+
+    /// Identifies one accepted stream before reading any byte from it.
+    ///
+    /// The caller bounds concurrent setups before invocation.
+    pub(crate) async fn accept(&self, stream: TcpStream) -> Result<Authenticated, Refusal> {
+        let (Ok(local), Ok(remote)) = (stream.local_addr(), stream.peer_addr()) else {
+            return Err(Refusal::new(Failure::Refused("unreachable"), None));
+        };
+        let address = Some(remote.ip().to_canonical());
+        tokio::time::timeout(SETUP, async {
+            let own = self
+                .cli
+                .status()
+                .await
+                .map_err(|failure| Refusal::new(failure, address))?;
+            if !own_address(&own, local) {
+                return Err(Refusal::new(Failure::Refused("local-address"), address));
+            }
+            let peer = self
+                .cli
+                .whois(remote.ip(), &own, &self.machine_id)
+                .await
+                .map_err(|failure| Refusal::new(failure, address))?;
+            if peer.caps.is_empty() {
+                return Err(Refusal {
+                    failure: Failure::Refused("no-caps"),
+                    peer: Some(Box::new(peer)),
+                    address,
+                });
+            }
+            Ok(Authenticated {
+                stream,
+                peer,
+                local,
+                remote,
+            })
+        })
+        .await
+        .unwrap_or_else(|_| Err(Refusal::new(Failure::Refused("timeout"), address)))
     }
-    Ok(Authenticated { stream })
-}
-fn machine(value: &str) -> bool {
-    !value.is_empty()
-        && value.len() <= 32
-        && value.as_bytes()[0].is_ascii_lowercase()
-        && value
-            .bytes()
-            .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'-')
-}
-fn rejected() -> io::Error {
-    io::Error::new(
-        io::ErrorKind::PermissionDenied,
-        "remote credentials rejected",
-    )
-}
-pub(crate) fn read_private(path: &Path) -> io::Result<Vec<u8>> {
-    crate::paths::private_parent(path)?;
-    let parent = path.parent().ok_or_else(rejected)?;
-    if !path.is_absolute() || parent.canonicalize()? != parent {
-        return Err(rejected());
-    }
-    let directory = std::fs::metadata(parent)?;
-    let uid = rustix::process::geteuid().as_raw();
-    if directory.uid() != uid || directory.mode() & 0o077 != 0 || !directory.is_dir() {
-        return Err(rejected());
-    }
-    let file = OpenOptions::new()
-        .read(true)
-        .custom_flags(
-            (rustix::fs::OFlags::NOFOLLOW | rustix::fs::OFlags::NONBLOCK)
-                .bits()
-                .cast_signed(),
-        )
-        .open(path)?;
-    let metadata = file.metadata()?;
-    if !metadata.is_file()
-        || metadata.uid() != uid
-        || metadata.mode() & 0o077 != 0
-        || metadata.nlink() != 1
-    {
-        return Err(rejected());
-    }
-    let mut bytes = Vec::new();
-    file.take(65_537).read_to_end(&mut bytes)?;
-    if bytes.is_empty() || bytes.len() > 65_536 {
-        return Err(rejected());
-    }
-    Ok(bytes)
 }
 
 #[derive(Debug)]
-struct CredentialFailure {
+struct Degraded {
     reason: &'static str,
-    source: Box<dyn std::error::Error + Send + Sync>,
+    source: io::Error,
 }
-impl fmt::Display for CredentialFailure {
+impl fmt::Display for Degraded {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(self.reason)
     }
 }
-impl std::error::Error for CredentialFailure {
+impl std::error::Error for Degraded {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-        Some(self.source.as_ref())
+        Some(&self.source)
     }
-}
-fn credential_error(
-    reason: &'static str,
-    source: impl std::error::Error + Send + Sync + 'static,
-) -> io::Error {
-    io::Error::other(CredentialFailure {
-        reason,
-        source: Box::new(source),
-    })
 }
 pub(crate) fn degradation(error: &io::Error) -> Option<&'static str> {
     error
         .get_ref()?
-        .downcast_ref::<CredentialFailure>()
+        .downcast_ref::<Degraded>()
         .map(|failure| failure.reason)
 }
 
@@ -313,14 +267,19 @@ pub(crate) fn listen_error(error: io::Error) -> io::Error {
     match error.kind() {
         io::ErrorKind::AddrInUse
         | io::ErrorKind::AddrNotAvailable
-        | io::ErrorKind::PermissionDenied => credential_error("remote-listen-unavailable", error),
+        | io::ErrorKind::PermissionDenied => io::Error::other(Degraded {
+            reason: "remote-listen-unavailable",
+            source: error,
+        }),
         _ => error,
     }
 }
 
 #[cfg(test)]
-mod listen_tests {
+mod tests {
     use super::*;
+    use crate::tailscale::fake::{self, Fake, SCRIPT};
+
     #[test]
     fn only_known_bind_failures_degrade() {
         for kind in [
@@ -342,5 +301,102 @@ mod listen_tests {
             assert_eq!(error.kind(), kind);
             assert_eq!(degradation(&error), None);
         }
+    }
+
+    fn settings(fake: &Fake, mode: &str, address: &str) -> Settings {
+        serde_json::from_value(
+            json!({"endpoint":{"mode":mode,"address":address},"tailscale":fake.program()}),
+        )
+        .expect("settings")
+    }
+
+    #[tokio::test]
+    async fn diagnose_reports_self_peer_caps_and_each_degraded_reason() {
+        let fake = Fake::new(SCRIPT);
+        let connect = settings(&fake, "connect", "100.64.0.2:7443");
+        assert_eq!(
+            connect.diagnose("laptop").await,
+            json!({"state":"degraded","reason":"not-tailnet-address"}),
+            "no status answer reads as an unknown address"
+        );
+        fake.write(
+            "stderr",
+            "failed to connect to local tailscaled; it doesn't appear to be running\n",
+        );
+        assert_eq!(
+            connect.diagnose("laptop").await["reason"],
+            "tailscale-not-running"
+        );
+        fake.remove("stderr");
+        fake.write(
+            "status.json",
+            &fake::status("laptop", "nSelf", "100.64.0.1"),
+        );
+        assert_eq!(
+            connect.diagnose("laptop").await["reason"],
+            "not-tailnet-address",
+            "whois does not know the target"
+        );
+        fake.write(
+            "whois-100.64.0.2.json",
+            &fake::whois(
+                "dev-01",
+                "nDev",
+                "100.64.0.2",
+                &json!([{"scopes":["local"],"allow":["discover","reply"]}]),
+            ),
+        );
+        assert_eq!(
+            connect.diagnose("laptop").await,
+            json!({"state":"configured","trust":"tailscale","endpoint":{"mode":"connect","address":"100.64.0.2:7443"},"self":{"name":"laptop","stableId":"nSelf","addresses":["100.64.0.1"]},"peer":{"name":"dev-01","stableId":"nDev","tags":["tag:dev"],"allow":[{"scope":"local","actions":["discover","reply"]}]}})
+        );
+        assert_eq!(
+            settings(&fake, "listen", "100.64.0.1:7443")
+                .diagnose("laptop")
+                .await,
+            json!({"state":"configured","trust":"tailscale","endpoint":{"mode":"listen","address":"100.64.0.1:7443"},"self":{"name":"laptop","stableId":"nSelf","addresses":["100.64.0.1"]}})
+        );
+        for address in ["0.0.0.0:7443", "127.0.0.1:7443", "100.64.0.2:7443"] {
+            assert_eq!(
+                settings(&fake, "listen", address).diagnose("laptop").await["reason"],
+                "not-tailnet-address",
+                "{address}"
+            );
+        }
+        fake.write("status.json", "{\"BackendState\":\"Running\"");
+        assert_eq!(
+            connect.diagnose("laptop").await["reason"],
+            "tailscale-error"
+        );
+        fake.mode("tailscale", 0o722);
+        assert_eq!(
+            connect.diagnose("laptop").await["reason"],
+            "tailscale-missing"
+        );
+    }
+
+    #[tokio::test]
+    async fn accept_refuses_before_reading_unless_the_peer_is_a_known_other_node() {
+        let fake = Fake::new(SCRIPT);
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("loopback listener");
+        let address = listener.local_addr().expect("bound");
+        let prepared = settings(&fake, "listen", &address.to_string())
+            .prepare("beta")
+            .expect("trusted fake");
+        let attempt = async || {
+            let _client = TcpStream::connect(address).await.expect("dial");
+            let (stream, _) = listener.accept().await.expect("accept");
+            prepared.accept(stream).await
+        };
+        fake.write("status.json", &fake::status("beta", "nBeta", "100.64.0.1"));
+        let refused = attempt()
+            .await
+            .expect_err("loopback is not a tailnet address");
+        assert_eq!(refused.failure, Failure::Refused("local-address"));
+        fake.write("status.json", &fake::status("beta", "nBeta", "127.0.0.1"));
+        let refused = attempt().await.expect_err("the peer is this node");
+        assert_eq!(refused.failure, Failure::Refused("self"));
     }
 }

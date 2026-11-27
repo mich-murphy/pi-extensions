@@ -104,8 +104,10 @@ it is a release/test reference, not a requirement for users to install Python.
 These are candidate build targets, not a claim of completed native service or
 clean-machine testing. Nix closures and standalone archives are different
 products: do not distribute a Nix executable without its runtime closure as a
-standalone archive. The fallback workflow builds with the runner's native linker
-and the Rust version from `rust-toolchain.toml`. Intel macOS is untested and has
+standalone archive. The fallback workflow builds macOS with the runner's native
+linker, and Linux inside a digest-pinned Debian bookworm Rust image (glibc 2.36)
+so the binary does not record the runner's newer glibc symbol versions; both use
+the Rust version from `rust-toolchain.toml`. Intel macOS is untested and has
 no initial catalog entry; it is not intrinsically unsupported. No musl/static,
 older glibc or older macOS compatibility is promised. Do not bypass Gatekeeper,
 clear quarantine, or weaken platform security to make acquisition succeed.

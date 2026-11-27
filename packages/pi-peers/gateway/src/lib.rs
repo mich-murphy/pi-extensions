@@ -2,21 +2,22 @@
 
 pub mod breaker;
 pub mod budget;
+mod caps;
 pub mod config;
 pub mod daemon;
 mod deadline;
 mod events;
 pub mod intern;
-pub mod keys;
 pub mod managed;
+mod tailscale;
 mod transport;
 pub mod wire;
 
-pub mod remote;
+mod remote;
+
+mod replies;
 
 mod link;
-
-mod pinned;
 
 mod paths;
 

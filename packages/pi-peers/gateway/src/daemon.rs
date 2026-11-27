@@ -14,10 +14,9 @@ use tokio::net::{UnixListener, UnixStream};
 
 use crate::breaker::LinkView;
 use crate::budget::{BufferClass, ConnectionId, ConnectionKind};
-use crate::config::{Config, Direction, Permission};
+use crate::config::{Config, Permission};
 use crate::events::Events;
-use crate::link::Driver;
-use crate::remote::Authenticated;
+use crate::link::{Driver, Step};
 
 #[path = "daemon_remote.rs"]
 mod remote_routing;
@@ -63,9 +62,36 @@ struct Remote {
     last_progress: Instant,
     ping: Option<String>,
     scopes: Vec<String>,
+    /// Who tailscaled says the peer is and what it may do here; its `StableID` is pinned.
+    peer: crate::tailscale::Peer,
+    refresh: Refresh,
+    /// Local messages sent to this remote that it may answer under `reply`.
+    replies: crate::replies::Replies,
     /// Interning tables of this link generation; a new link starts empty.
     refs: crate::intern::Refs,
+    /// Whether this side accepted the link: only a listener requires the peer to hold caps.
+    listening: bool,
 }
+/// The periodic whois of a linked peer, run as a task so routing never waits on the CLI.
+#[derive(Debug)]
+struct Refresh {
+    due: Instant,
+    failures: u8,
+    running: bool,
+}
+impl Refresh {
+    fn new(now: Instant) -> Self {
+        Self {
+            due: now + remote_routing::REFRESH_EVERY,
+            failures: 0,
+            running: false,
+        }
+    }
+}
+type Refreshed = (
+    ConnectionId,
+    Result<crate::tailscale::Peer, crate::tailscale::Failure>,
+);
 #[derive(Debug)]
 struct Forward {
     origin: ConnectionId,
@@ -90,6 +116,7 @@ pub struct Daemon {
     buffers: Accounting,
     forwards: HashMap<String, Forward>,
     link: Option<Driver>,
+    refreshes: JoinSet<Refreshed>,
     link_view: Option<LinkView>,
     bound_at: Instant,
     events: Events,
@@ -116,19 +143,16 @@ impl Daemon {
         let (link, remote_degraded) = match config
             .remote
             .as_ref()
-            .map(|settings| settings.clone().prepare())
-            .transpose()
+            .map(|settings| settings.prepare(&config.machine_id))
         {
-            Ok(prepared) => match prepared.map(Driver::new).transpose() {
-                Ok(link) => (link, None),
+            None => (None, None),
+            Some(Err(failure)) => (None, Some(failure.reason())),
+            Some(Ok(prepared)) => match Driver::new(prepared) {
+                Ok(link) => (Some(link), None),
                 Err(error) => match crate::remote::degradation(&error) {
                     Some(reason) => (None, Some(reason)),
                     None => return Err(error),
                 },
-            },
-            Err(error) => match crate::remote::degradation(&error) {
-                Some(reason) => (None, Some(reason)),
-                None => return Err(error),
             },
         };
         let parent = config.socket_path.parent().ok_or_else(denied)?;
@@ -158,6 +182,7 @@ impl Daemon {
             managed: false,
             restart: None,
             link,
+            refreshes: JoinSet::new(),
             link_view: None,
             bound_at: Instant::now(),
             events: Events::default(),
@@ -255,16 +280,11 @@ impl Daemon {
                     let (stream, _) = accepted?;
                     if tasks.len() < MAX_CONNECTIONS + usize::from(self.remote_id().is_some()) && self.clients.values().filter(|client| client.remote.is_none()).count() < MAX_CONNECTIONS { self.accept(stream, &events, &mut tasks)?; }
                 }
-                authenticated = remote_progress(self.link.as_mut()) => {
-                    if let Some(authenticated) = authenticated? && self.remote_id().is_none() {
-                        if tasks.len() < MAX_CONNECTIONS + 1 {
-                            self.activate(authenticated, &events, &mut tasks)?;
-                            if let Some(link) = self.link.as_mut() { link.connected(); }
-                        }
-                        else if let Some(link) = self.link.as_mut() { link.handshake_failed(); }
-                    }
-                }
+                step = remote_progress(self.link.as_mut()) => self.link_step(step?, &events, &mut tasks)?,
                 Some(event) = receive.recv() => self.event(event),
+                Some(joined) = self.refreshes.join_next(), if !self.refreshes.is_empty() => {
+                    if let Ok((id, result)) = joined { self.refreshed(id, result); }
+                }
                 Some(joined) = tasks.join_next(), if !tasks.is_empty() => {
                     match joined {
                         Ok(id) => {
@@ -277,6 +297,7 @@ impl Daemon {
                 }
                 () = transport::next_deadline(deadline) => {
                     self.liveness();
+                    self.refresh_due(Instant::now());
                     let now = Instant::now();
                     let expired: Vec<_> = self.forwards.iter().filter(|(_, forward)| forward.deadline <= now).map(|(rid, _)| rid.clone()).collect();
                     for rid in expired {
@@ -653,13 +674,7 @@ impl Daemon {
             self.fail(id);
         }
         self.publish(&descriptor, "upsert");
-        if self
-            .config
-            .remote_scopes()
-            .iter()
-            .any(|scope| member(&descriptor, scope))
-            && let Some(link) = self.link.as_mut()
-        {
+        if let Some(link) = self.link.as_mut() {
             link.local_reconnection();
         }
     }
@@ -683,17 +698,14 @@ impl Daemon {
             .filter_map(Value::as_str)
             .map(str::to_owned)
             .collect();
+        // A linked remote's export is already filtered by the caps it grants this node, so local
+        // sessions see remote entries without a local grant; local entries still need one.
         if !scopes.iter().all(|scope| {
             self.descriptor(id).is_some_and(|own| member(own, scope))
-                && [self.config.machine_id.as_str()]
-                    .into_iter()
-                    .chain(
-                        self.config
-                            .remote
-                            .as_ref()
-                            .map(crate::remote::Settings::machine_id),
-                    )
-                    .any(|machine| self.config.permits(machine, scope, Permission::Discover))
+                && (self.link.is_some()
+                    || self
+                        .config
+                        .permits(&self.config.machine_id, scope, Permission::Discover))
         }) {
             self.reject(id, request, "forbidden", None);
             return;
@@ -823,22 +835,23 @@ impl Daemon {
         let machine = target["machineId"].as_str().unwrap_or("");
         let remote_origin = self.is_remote(origin);
         let authorized = if remote_origin {
-            machine == self.config.machine_id
-                && self.config.remote.as_ref().is_some_and(|remote| {
-                    self.config.permits_direction(
-                        remote.machine_id(),
-                        scope,
-                        Permission::Push,
-                        Direction::Incoming,
-                    )
-                })
-                && self
-                    .remote_descriptor(origin, &request["from"])
-                    .is_some_and(|own| member(own, scope))
+            let refusal = if machine != self.config.machine_id {
+                Some("transit")
+            } else if !self.remote_admits(origin, request, scope) {
+                Some("caps")
+            } else {
+                None
+            };
+            if let Some(reason) = refusal {
+                self.audit_refusal(origin, request, reason);
+            }
+            refusal.is_none()
         } else {
+            // Another machine's gateway decides what reaches its sessions.
             self.descriptor(origin)
                 .is_some_and(|own| member(own, scope))
-                && self.config.permits(machine, scope, Permission::Push)
+                && (machine != self.config.machine_id
+                    || self.config.permits(machine, scope, Permission::Push))
         };
         if !authorized {
             self.reject(origin, request, "forbidden", None);
@@ -863,10 +876,15 @@ impl Daemon {
                 })
                 .map(|(id, _)| *id)
         } else {
+            // An answer may go to a remote session this node never received in a roster (the
+            // remote holds only `reply` here): it travels to the linked machine, whose gateway
+            // admits it only for a message that session sent this one.
+            let answer = request["message"].get("replyTo").is_some();
             self.destination(origin, target, scope).or_else(|| {
                 self.remote_id().filter(|id| {
                     self.remote_descriptor(*id, target)
                         .is_some_and(|descriptor| member(descriptor, scope))
+                        || (answer && self.linked_machine(*id) == Some(machine))
                 })
             })
         };
@@ -935,6 +953,12 @@ impl Daemon {
             self.reject(origin, &request, "delivery_too_large", None);
             return;
         }
+        // Record what a `reply`-only remote may answer before the message can reach it.
+        let Some(recorded) = self.record_for(origin, destination, &forwarded["from"], &request)
+        else {
+            drop(reservation);
+            return;
+        };
         let sender_peer = if remote_origin {
             &request["from"]
         } else {
@@ -955,6 +979,9 @@ impl Daemon {
             remote.refs.compress(&mut forwarded);
         }
         if !self.queue_authorized(destination, &forwarded, BufferClass::Data, None, source) {
+            if recorded {
+                self.unrecord_sent(destination, &self.descriptor_peer(origin), &request);
+            }
             drop(reservation);
             self.reject(origin, &request, "overloaded", Some("buffers"));
             return;
@@ -974,11 +1001,12 @@ impl Daemon {
     fn forward_permit(&self, id: ConnectionId, peer: &Value) -> Option<ForwardPermit> {
         let client = self.clients.get(&id)?;
         if let Some(remote) = &client.remote {
+            // A session never advertised in a roster (a reply-only remote) is bound to the link.
             let mut permit = remote
                 .roster
                 .iter()
                 .find(|(descriptor, _, _)| descriptor["peer"] == *peer)
-                .map(|(_, _, epoch)| epoch.permit())?;
+                .map_or_else(|| client.source.permit(), |(_, _, epoch)| epoch.permit());
             permit.bind_authority(client.source.permit());
             Some(permit)
         } else {
@@ -1048,6 +1076,9 @@ impl Daemon {
     }
     fn disconnect(&mut self, id: ConnectionId) {
         let remote = self.is_remote(id);
+        if remote {
+            self.audit_link_down(id);
+        }
         self.withdraw(id);
         let affected: Vec<_> = self
             .forwards
@@ -1078,7 +1109,7 @@ impl Daemon {
     }
 }
 
-async fn remote_progress(link: Option<&mut Driver>) -> io::Result<Option<Authenticated>> {
+async fn remote_progress(link: Option<&mut Driver>) -> io::Result<Step> {
     match link {
         Some(link) => link.progress().await,
         None => std::future::pending().await,
@@ -1179,6 +1210,7 @@ fn current_uid() -> u32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::caps::Verb;
 
     #[tokio::test]
     async fn managed_runtime_without_loaded_file_fingerprint_refuses_guarded_registration() {
@@ -1326,7 +1358,11 @@ mod tests {
             last_progress: Instant::now(),
             ping: None,
             scopes: vec!["team".to_owned()],
+            peer: crate::tailscale::tests_support::peer("beta", &serde_json::json!([])),
+            refresh: Refresh::new(Instant::now()),
+            replies: crate::replies::Replies::default(),
             refs: crate::intern::Refs::default(),
+            listening: true,
         });
         tokio::time::advance(Duration::from_secs(29)).await;
         daemon.liveness();
@@ -1387,6 +1423,234 @@ mod tests {
         drop(tasks);
         std::fs::remove_dir_all(directory).expect("remove isolated directory");
     }
+    fn linked_fixture(
+        name: &str,
+        caps: &Value,
+    ) -> (Daemon, PathBuf, UnixStream, JoinSet<ConnectionId>) {
+        let directory = PathBuf::from("/tmp")
+            .canonicalize()
+            .expect("canonical temporary directory")
+            .join(format!(
+                "gw-{name}-{}",
+                random_id().expect("isolated nonce")
+            ));
+        std::fs::create_dir(&directory).expect("isolated directory");
+        std::fs::set_permissions(&directory, std::fs::Permissions::from_mode(0o700))
+            .expect("private directory");
+        let config = Config::parse(&serde_json::to_vec(&json!({"machineId":"alpha","socketPath":directory.join("s"),"scopeIds":["team","other"],"policies":[]})).expect("fixture encoding")).expect("fixture policy");
+        let mut daemon = Daemon::bind(config).expect("isolated bind");
+        let (stream, peer) = UnixStream::pair().expect("isolated socketpair");
+        let (events, _receive) = mpsc::channel(68);
+        let mut tasks = JoinSet::new();
+        daemon
+            .accept(stream, &events, &mut tasks)
+            .expect("fixture connection");
+        let id = ConnectionId(1);
+        daemon.clients.get_mut(&id).expect("fixture client").remote = Some(Remote {
+            roster: Vec::new(),
+            snapshot_rid: "00000000000000000000000000000001".to_owned(),
+            established: true,
+            last_progress: Instant::now(),
+            ping: None,
+            scopes: vec!["team".to_owned()],
+            peer: crate::tailscale::tests_support::peer("beta", caps),
+            refresh: Refresh::new(Instant::now()),
+            replies: crate::replies::Replies::default(),
+            refs: crate::intern::Refs::default(),
+            listening: true,
+        });
+        (daemon, directory, peer, tasks)
+    }
+
+    #[tokio::test]
+    async fn refresh_applies_new_caps_ends_a_lost_watch_and_closes_on_revocation() {
+        let caps = json!([{"scopes":["team"],"allow":["discover","push"]}]);
+        let id = ConnectionId(1);
+        let peer = |caps: &Value| crate::tailscale::tests_support::peer("beta", caps);
+        let (mut daemon, directory, mut stream, tasks) = linked_fixture("refresh", &caps);
+        daemon.export(id, &json!({"v":2,"op":"discover","rid":"00000000000000000000000000000005","scopeIds":["team","other"],"watch":true}));
+        assert_eq!(read_frame(&mut stream).await["outcome"]["tag"], "ok");
+        assert_eq!(
+            daemon.clients[&id].watch.as_ref().expect("watch").scopes,
+            vec!["team".to_owned()],
+            "export is filtered by the discover caps"
+        );
+        assert!(daemon.remote_allows(id, "team", Verb::Push));
+        daemon.refreshed(id, Ok(peer(&json!([{"scopes":["team"],"allow":["push"]}]))));
+        assert!(!daemon.clients[&id].failed, "caps changed, not revoked");
+        assert!(daemon.clients[&id].watch.is_none(), "discover lost");
+        let invalidated = read_frame(&mut stream).await;
+        assert_eq!(invalidated["event"]["tag"], "invalidated");
+        assert_eq!(invalidated["event"]["reason"], "policy_changed");
+        assert!(daemon.remote_allows(id, "team", Verb::Push));
+        assert!(!daemon.remote_allows(id, "team", Verb::Discover));
+        daemon.refreshed(id, Err(crate::tailscale::Failure::Error));
+        assert!(
+            !daemon.clients[&id].failed,
+            "one failed refresh is tolerated"
+        );
+        daemon.refreshed(id, Ok(peer(&caps)));
+        daemon.refreshed(id, Err(crate::tailscale::Failure::NotRunning));
+        assert!(!daemon.clients[&id].failed, "a success resets the count");
+        daemon.refreshed(id, Err(crate::tailscale::Failure::Error));
+        assert!(daemon.clients[&id].failed, "two failures in a row close");
+        drop(daemon);
+        drop(tasks);
+        std::fs::remove_dir_all(directory).expect("cleanup");
+
+        let mut renamed = peer(&caps);
+        renamed.machine_id = "gamma".to_owned();
+        let mut rekeyed = peer(&caps);
+        rekeyed.stable_id = "n-other".to_owned();
+        for (case, result) in [
+            ("404", Err(crate::tailscale::Failure::NotFound)),
+            (
+                "expired",
+                Err(crate::tailscale::Failure::Refused("expired")),
+            ),
+            ("empty caps", Ok(peer(&json!([])))),
+            ("stable id", Ok(rekeyed)),
+            ("name", Ok(renamed)),
+        ] {
+            let (mut daemon, directory, _stream, tasks) = linked_fixture("revoke", &caps);
+            daemon.refreshed(id, result);
+            assert!(daemon.clients[&id].failed, "{case} closes the link at once");
+            drop(daemon);
+            drop(tasks);
+            std::fs::remove_dir_all(directory).expect("cleanup");
+        }
+    }
+
+    #[tokio::test]
+    async fn a_connector_keeps_a_link_whose_listener_holds_no_caps_and_refuses_its_frames() {
+        let id = ConnectionId(1);
+        let peer = |caps: &Value| crate::tailscale::tests_support::peer("beta", caps);
+        let caps = json!([{"scopes":["team"],"allow":["discover","push"]}]);
+        let (mut daemon, directory, mut stream, tasks) = linked_fixture("connector", &caps);
+        daemon
+            .clients
+            .get_mut(&id)
+            .and_then(|client| client.remote.as_mut())
+            .expect("remote fixture")
+            .listening = false;
+        daemon.refreshed(id, Ok(peer(&json!([]))));
+        assert!(
+            !daemon.clients[&id].failed,
+            "empty caps keep a connector's link"
+        );
+        for verb in [Verb::Discover, Verb::Push, Verb::Reply] {
+            assert!(!daemon.remote_allows(id, "team", verb), "{verb:?}");
+        }
+        let local = json!({"machineId":"alpha","sessionId":"me","runtimeNonce":"00000000000000000000000000000001"});
+        let remote = json!({"machineId":"beta","sessionId":"you","runtimeNonce":"00000000000000000000000000000002"});
+        let push = json!({"v":2,"op":"send","rid":"00000000000000000000000000000004","from":remote,"to":local,"scopeId":"team","budgetMs":15000,"message":{"id":"0000000000000000000000000000000b","kind":"request","content":"a","format":"text"}});
+        assert!(!daemon.remote_admits(id, &push, "team"), "push refused");
+        daemon.export(id, &json!({"v":2,"op":"discover","rid":"00000000000000000000000000000005","scopeIds":["team","other"],"watch":false}));
+        assert_eq!(
+            read_frame(&mut stream).await["outcome"]["value"]["peers"],
+            json!([]),
+            "nothing exported"
+        );
+        for (case, result) in [
+            ("404", Err(crate::tailscale::Failure::NotFound)),
+            (
+                "expired",
+                Err(crate::tailscale::Failure::Refused("expired")),
+            ),
+        ] {
+            let (mut daemon, directory, _stream, tasks) = linked_fixture("connector", &caps);
+            daemon
+                .clients
+                .get_mut(&id)
+                .and_then(|client| client.remote.as_mut())
+                .expect("remote fixture")
+                .listening = false;
+            daemon.refreshed(id, result);
+            assert!(
+                daemon.clients[&id].failed,
+                "{case} still closes a connector"
+            );
+            drop(daemon);
+            drop(tasks);
+            std::fs::remove_dir_all(directory).expect("cleanup");
+        }
+        drop(daemon);
+        drop(tasks);
+        std::fs::remove_dir_all(directory).expect("cleanup");
+    }
+
+    #[tokio::test]
+    async fn reply_only_remotes_answer_only_recorded_local_messages_once() {
+        let caps = json!([{"scopes":["team"],"allow":["reply"]}]);
+        let (mut daemon, directory, _stream, tasks) = linked_fixture("replies", &caps);
+        let id = ConnectionId(1);
+        assert!(daemon.remote_allows(id, "team", Verb::Reply));
+        assert!(!daemon.remote_allows(id, "team", Verb::Push));
+        let local = json!({"machineId":"alpha","sessionId":"me","runtimeNonce":"00000000000000000000000000000001"});
+        let remote = json!({"machineId":"beta","sessionId":"you","runtimeNonce":"00000000000000000000000000000002"});
+        let sent = json!({"v":2,"op":"send","rid":"00000000000000000000000000000003","to":remote,"scopeId":"team","budgetMs":15000,"message":{"id":"0000000000000000000000000000000a","kind":"request","content":"q","format":"text"}});
+        let answer = |kind: &str, message_id: &str| json!({"v":2,"op":"send","rid":"00000000000000000000000000000004","from":remote,"to":local,"scopeId":"team","budgetMs":15000,"message":{"id":"0000000000000000000000000000000b","kind":kind,"content":"a","format":"text","replyTo":{"sender":local,"messageId":message_id}}});
+        let original = "0000000000000000000000000000000a";
+        assert!(
+            !daemon.remote_admits(id, &answer("reply", original), "team"),
+            "nothing was sent yet"
+        );
+        assert_eq!(daemon.record_sent(id, &local, &sent), Ok(true));
+        let mut request = answer("request", original);
+        request["message"]
+            .as_object_mut()
+            .expect("message")
+            .remove("replyTo");
+        assert!(
+            !daemon.remote_admits(id, &request, "team"),
+            "request is never admitted under reply"
+        );
+        assert!(
+            !daemon.remote_admits(
+                id,
+                &answer("reply", "0000000000000000000000000000000c"),
+                "team"
+            ),
+            "forged message id"
+        );
+        assert!(
+            !daemon.remote_admits(id, &answer("reply", original), "other"),
+            "other scope"
+        );
+        assert!(daemon.remote_admits(id, &answer("update", original), "team"));
+        assert!(daemon.remote_admits(id, &answer("reply", original), "team"));
+        assert!(
+            !daemon.remote_admits(id, &answer("reply", original), "team"),
+            "replayed reply"
+        );
+        drop(daemon);
+        drop(tasks);
+        std::fs::remove_dir_all(directory).expect("cleanup");
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn refresh_is_scheduled_every_fifteen_seconds_and_never_stacks() {
+        let caps = json!([{"scopes":["team"],"allow":["push"]}]);
+        let (mut daemon, directory, _stream, tasks) = linked_fixture("schedule", &caps);
+        let id = ConnectionId(1);
+        let due = daemon.clients[&id]
+            .remote
+            .as_ref()
+            .expect("remote")
+            .refresh
+            .due;
+        assert!(daemon.deadline().is_some_and(|deadline| deadline <= due));
+        tokio::time::advance(Duration::from_secs(15)).await;
+        daemon.refresh_due(Instant::now());
+        // No link driver in this fixture: nothing runs, the next refresh is rescheduled.
+        let remote = daemon.clients[&id].remote.as_ref().expect("remote");
+        assert!(!remote.refresh.running);
+        assert!(remote.refresh.due > Instant::now());
+        assert!(daemon.refreshes.is_empty());
+        drop(daemon);
+        drop(tasks);
+        std::fs::remove_dir_all(directory).expect("cleanup");
+    }
     async fn read_frame(stream: &mut UnixStream) -> Value {
         use tokio::io::AsyncReadExt;
         let mut header = [0_u8; 4];
@@ -1399,7 +1663,7 @@ mod tests {
         serde_json::from_slice(&body).expect("frame JSON")
     }
 
-    fn remote_daemon(name: &str) -> (Daemon, PathBuf) {
+    fn remote_daemon(name: &str) -> (Daemon, PathBuf, crate::tailscale::fake::Fake) {
         let directory = PathBuf::from("/tmp")
             .canonicalize()
             .expect("canonical temporary directory")
@@ -1407,19 +1671,28 @@ mod tests {
         std::fs::create_dir(&directory).expect("isolated directory");
         std::fs::set_permissions(&directory, std::fs::Permissions::from_mode(0o700))
             .expect("private directory");
-        let missing = directory.join("missing");
-        let config = Config::parse(&serde_json::to_vec(&json!({"machineId":"alpha","socketPath":directory.join("s"),"scopeIds":["team"],"policies":[{"machineId":"beta","scopeId":"team","permissions":["discover","push"]}],"remote":{"machineId":"beta","endpoint":{"mode":"connect","address":"127.0.0.1:9"},"privateKey":missing,"peerPublicKey":"ab".repeat(32)}})).expect("config JSON")).expect("remote config");
-        let daemon = Daemon::bind(config).expect("remote side degrades, local binds");
+        let fake = crate::tailscale::fake::Fake::new(crate::tailscale::fake::SCRIPT);
+        let config = Config::parse(&serde_json::to_vec(&json!({"machineId":"alpha","socketPath":directory.join("s"),"scopeIds":["team"],"policies":[{"machineId":"alpha","scopeId":"team","permissions":["discover","push"]}],"remote":{"endpoint":{"mode":"connect","address":"127.0.0.1:9"},"tailscale":fake.program()}})).expect("config JSON")).expect("remote config");
+        let daemon = Daemon::bind(config).expect("binds; the link never runs here");
         assert!(
-            daemon.remote_degraded_reason().is_some(),
-            "no link can start"
+            daemon.remote_degraded_reason().is_none(),
+            "trusted fake CLI"
         );
-        (daemon, directory)
+        assert!(
+            daemon.link_frame("x").is_none(),
+            "no link.state names a machine before whois identified one"
+        );
+        (daemon, directory, fake)
     }
 
     #[tokio::test]
     async fn every_session_gets_link_state_and_fails_fast_with_link_down() {
-        let (mut daemon, directory) = remote_daemon("link-down");
+        let (mut daemon, directory, _fake) = remote_daemon("link-down");
+        daemon
+            .link
+            .as_mut()
+            .expect("configured link")
+            .identified("beta");
         let (events, _receive) = mpsc::channel(68);
         let mut tasks = JoinSet::new();
         let (first, mut first_peer) = UnixStream::pair().expect("sockets");
@@ -1444,7 +1717,7 @@ mod tests {
             let state = read_frame(peer).await;
             assert_eq!(state["op"], "link.state");
             assert_eq!(state["machineId"], "beta");
-            assert_eq!(state["state"], "down");
+            assert_eq!(state["state"], "probing", "dialing, never up");
             assert_eq!(state["rid"], "00000000000000000000000000000001");
         }
         let send = |rid: &str| json!({"v":2,"op":"send","rid":rid,"to":{"machineId":"beta","sessionId":"remote","runtimeNonce":"00000000000000000000000000000009"},"scopeId":"team","budgetMs":15000,"message":{"id":"0000000000000000000000000000000a","kind":"update","content":"hi","format":"text"}});

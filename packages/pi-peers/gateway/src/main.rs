@@ -1,7 +1,6 @@
 //! Explicit foreground gateway CLI; it never installs or starts a background service.
 use std::io;
-use std::io::{Read, Write};
-use std::os::unix::fs::OpenOptionsExt;
+use std::io::Write;
 use std::path::PathBuf;
 
 use pi_gateway::config::Config;
@@ -23,15 +22,12 @@ async fn main() -> io::Result<()> {
         if json.is_some() {
             serde_json::to_writer(
                 &mut stdout,
-                &serde_json::json!({"name":"pi-gateway","version":env!("CARGO_PKG_VERSION"),"wireVersions":[2],"capabilities":["managed-on-demand-v1","gateway-control-v1","setup-lock-v1","config-generation-v1","pinned-keys-v1"]}),
+                &serde_json::json!({"name":"pi-gateway","version":env!("CARGO_PKG_VERSION"),"wireVersions":[2],"capabilities":["managed-on-demand-v1","gateway-control-v1","setup-lock-v1","config-generation-v1","tailscale-identity-v1"]}),
             )?;
         } else {
             write!(stdout, "pi-gateway {}", env!("CARGO_PKG_VERSION"))?;
         }
         return stdout.write_all(b"\n");
-    }
-    if command.as_deref() == Some(std::ffi::OsStr::new("key")) {
-        return key(arguments);
     }
     let managed = command.as_deref() == Some(std::ffi::OsStr::new("--managed"));
     if managed {
@@ -43,7 +39,7 @@ async fn main() -> io::Result<()> {
     ) {
         return Err(io::Error::new(
             io::ErrorKind::InvalidInput,
-            "usage: pi-gateway [--managed] --config <absolute-path> | --diagnose <absolute-path> | key generate|show --input <absolute-path>",
+            "usage: pi-gateway [--managed] --config <absolute-path> | --diagnose <absolute-path>",
         ));
     }
     let path = PathBuf::from(
@@ -69,7 +65,7 @@ async fn main() -> io::Result<()> {
     let config = match Config::read(&path) {
         Ok(config) => config,
         Err(error) => {
-            // An old private-CA config never starts; diagnose names it so setup can re-link.
+            // A pre-0.4.0 remote config never starts; diagnose names it so setup can re-link.
             if command.as_deref() == Some(std::ffi::OsStr::new("--diagnose"))
                 && let Some(report) = pi_gateway::config::retired_certificates(&path)
             {
@@ -88,7 +84,7 @@ async fn main() -> io::Result<()> {
         return io::stdout().write_all(b"\n");
     }
     if command.as_deref() == Some(std::ffi::OsStr::new("--diagnose")) {
-        serde_json::to_writer(io::stdout().lock(), &config.diagnose()?)?;
+        serde_json::to_writer(io::stdout().lock(), &config.diagnose().await)?;
         return io::stdout().write_all(b"\n");
     }
     serve(config, if managed { Mode::Managed } else { Mode::Manual }).await
@@ -129,54 +125,4 @@ async fn serve(config: Config, mode: Mode) -> io::Result<()> {
     } else {
         daemon.run(shutdown).await
     }
-}
-
-fn key(arguments: impl Iterator<Item = std::ffi::OsString>) -> io::Result<()> {
-    let (operation, bytes) = input("key", arguments)?;
-    let output = pi_gateway::keys::execute(&operation, &bytes)?;
-    serde_json::to_writer(io::stdout().lock(), &output)?;
-    io::stdout().write_all(b"\n")
-}
-
-/// Reads `OP --input ABS_JSON`: one bounded regular file, never followed through a symlink.
-fn input(
-    command: &str,
-    mut arguments: impl Iterator<Item = std::ffi::OsString>,
-) -> io::Result<(String, Vec<u8>)> {
-    let operation = arguments
-        .next()
-        .and_then(|arg| arg.into_string().ok())
-        .ok_or_else(|| io::Error::other(format!("missing {command} operation")))?;
-    if arguments.next().as_deref() != Some(std::ffi::OsStr::new("--input")) {
-        return Err(io::Error::other(format!(
-            "{command} requires --input ABS_JSON"
-        )));
-    }
-    let path = PathBuf::from(
-        arguments
-            .next()
-            .ok_or_else(|| io::Error::other("missing input path"))?,
-    );
-    if !path.is_absolute() || arguments.next().is_some() {
-        return Err(io::Error::other(format!(
-            "{command} requires one absolute JSON input path"
-        )));
-    }
-
-    let file = std::fs::OpenOptions::new()
-        .read(true)
-        .custom_flags(
-            (rustix::fs::OFlags::NOFOLLOW | rustix::fs::OFlags::NONBLOCK)
-                .bits()
-                .cast_signed(),
-        )
-        .open(path)?;
-    if !file.metadata()?.is_file() {
-        return Err(io::Error::other(format!(
-            "{command} input must be a regular file"
-        )));
-    }
-    let mut bytes = Vec::new();
-    file.take(32766).read_to_end(&mut bytes)?;
-    Ok((operation, bytes))
 }

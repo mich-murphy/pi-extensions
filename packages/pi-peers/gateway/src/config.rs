@@ -1,4 +1,7 @@
 //! Explicit operator policy; no discovered files or permissive defaults.
+//!
+//! Local `policies` govern only sessions on this machine. What a remote may do here comes from
+//! the tailnet policy file through Tailscale, never from this file.
 use std::collections::HashSet;
 use std::fmt;
 use std::path::{Path, PathBuf};
@@ -27,23 +30,19 @@ pub(crate) struct Policy {
     machine_id: String,
     scope_id: String,
     permissions: Vec<Permission>,
-    #[serde(default)]
-    direction: Direction,
+    /// 0.3.0 onboarding wrote `"outgoing"` on every local grant: accepted and ignored.
+    /// `"incoming"` granted remotes and is refused.
+    #[serde(default, rename = "direction")]
+    _direction: Option<Outgoing>,
 }
 
-/// Operator grant direction, independently enforced from adapter counterpart policy.
-#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Hash, Deserialize)]
+#[derive(Debug, Deserialize)]
 #[serde(rename_all = "lowercase")]
-#[non_exhaustive]
-pub enum Direction {
-    /// Local callers acting on the named machine; preserves the local configuration API.
-    #[default]
+enum Outgoing {
     Outgoing,
-    /// Authenticated named remote callers acting on this gateway's local runtimes.
-    Incoming,
 }
 
-/// Directional capability granted for a configured machine/scope pair.
+/// Capability granted to local sessions for a scope.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Deserialize)]
 #[serde(rename_all = "lowercase")]
 #[non_exhaustive]
@@ -68,7 +67,7 @@ impl fmt::Display for ReadConfigError {
 }
 impl std::error::Error for ReadConfigError {}
 
-fn machine(value: &str) -> bool {
+pub(crate) fn machine(value: &str) -> bool {
     !value.is_empty()
         && value.len() <= 32
         && value.as_bytes()[0].is_ascii_lowercase()
@@ -76,30 +75,38 @@ fn machine(value: &str) -> bool {
             .bytes()
             .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-')
 }
-fn scope(value: &str) -> bool {
+pub(crate) fn scope(value: &str) -> bool {
     !value.is_empty()
         && value.len() <= 64
         && value
             .bytes()
             .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')
 }
+
+fn read_bounded(path: &Path) -> Option<Vec<u8>> {
+    use std::io::Read;
+    if !path.is_absolute() {
+        return None;
+    }
+    let mut bytes = Vec::new();
+    std::fs::File::open(path)
+        .ok()?
+        .take(32_765)
+        .read_to_end(&mut bytes)
+        .ok()?;
+    Some(bytes)
+}
+
 impl Config {
     /// Reads one explicitly named configuration without inspecting any credential directory.
     /// Retains SHA256 of the exact successfully parsed bytes for guarded managed admission.
     ///
     /// # Errors
     /// Rejects nonabsolute paths, excessive bytes, ambiguous JSON, unknown fields,
-    /// invalid identifiers, duplicate scopes/policy tuples/permissions and empty policy grants.
+    /// invalid identifiers, duplicate scopes/policy tuples/permissions, empty policy grants
+    /// and policies naming any machine but this one.
     pub fn read(path: &Path) -> Result<Self, ReadConfigError> {
-        use std::io::Read;
-        if !path.is_absolute() {
-            return Err(ReadConfigError);
-        }
-        let file = std::fs::File::open(path).map_err(|_| ReadConfigError)?;
-        let mut bytes = Vec::new();
-        file.take(32_765)
-            .read_to_end(&mut bytes)
-            .map_err(|_| ReadConfigError)?;
+        let bytes = read_bounded(path).ok_or(ReadConfigError)?;
         let mut config = Self::parse(&bytes)?;
         let digest = ring::digest::digest(&ring::digest::SHA256, &bytes);
         config.loaded_config_sha256 = Some(digest.as_ref().iter().fold(
@@ -132,11 +139,11 @@ impl Config {
         {
             return Err(ReadConfigError);
         }
-        let mut tuples = HashSet::new();
+        let mut scopes = HashSet::new();
         for policy in &config.policies {
-            if !machine(&policy.machine_id)
+            if policy.machine_id != config.machine_id
                 || !config.scope_ids.contains(&policy.scope_id)
-                || !tuples.insert((&policy.machine_id, &policy.scope_id, policy.direction))
+                || !scopes.insert(&policy.scope_id)
                 || policy.permissions.is_empty()
                 || policy.permissions.len() > 4
                 || policy.permissions.iter().collect::<HashSet<_>>().len()
@@ -145,114 +152,79 @@ impl Config {
                 return Err(ReadConfigError);
             }
         }
-        if let Some(remote) = &config.remote {
-            remote.validate().map_err(|_| ReadConfigError)?;
-            if remote.machine_id() == config.machine_id || config.remote_scopes().is_empty() {
-                return Err(ReadConfigError);
-            }
+        if config.remote.as_ref().is_some_and(|remote| !remote.valid()) {
+            return Err(ReadConfigError);
         }
         Ok(config)
     }
 
-    pub(crate) fn permits(&self, machine: &str, scope: &str, permission: Permission) -> bool {
-        self.permits_direction(machine, scope, permission, Direction::Outgoing)
+    /// Whether local sessions on `machine` hold `permission` on `scope`. Only this machine can
+    /// be granted anything; the retired `read` and `interest` permissions are never asked for.
+    #[must_use]
+    pub fn permits(&self, machine: &str, scope: &str, permission: Permission) -> bool {
+        machine == self.machine_id
+            && self
+                .policies
+                .iter()
+                .any(|policy| policy.scope_id == scope && policy.permissions.contains(&permission))
     }
 
-    /// Whether a policy grants `permission` on `scope` to `machine` in `direction`.
-    /// The retired `read` and `interest` permissions are never asked for, so they grant nothing.
-    #[must_use]
-    pub fn permits_direction(
-        &self,
-        machine: &str,
-        scope: &str,
-        permission: Permission,
-        direction: Direction,
-    ) -> bool {
-        self.policies.iter().any(|policy| {
-            policy.direction == direction
-                && policy.machine_id == machine
-                && policy.scope_id == scope
-                && policy.permissions.contains(&permission)
-        })
-    }
-    // Internal authenticated roster exchange enables routing/source binding, not discovery.
-    pub(crate) fn remote_scopes(&self) -> Vec<String> {
-        let Some(remote) = &self.remote else {
-            return Vec::new();
+    /// The `--diagnose` report: configuration and Tailscale identity, never live link state.
+    pub async fn diagnose(&self) -> serde_json::Value {
+        let remote = match &self.remote {
+            None => serde_json::json!({"state":"disabled"}),
+            Some(settings) => settings.diagnose(&self.machine_id).await,
         };
-        self.scope_ids
-            .iter()
-            .filter(|scope| {
-                self.policies.iter().any(|policy| {
-                    policy.machine_id == remote.machine_id() && policy.scope_id == **scope
-                })
-            })
-            .cloned()
-            .collect()
+        serde_json::json!({"version":1,"machineId":self.machine_id,"remote":remote})
     }
 }
 
-/// Certificate fields of the retired private-CA remote; their presence marks an old config.
-const RETIRED_REMOTE_FIELDS: [&str; 5] = [
+/// Remote fields of the retired private-CA (0.3.0) and pinned-key shapes.
+const RETIRED_REMOTE_FIELDS: [&str; 8] = [
     "rootCertificates",
     "certificateChain",
     "issuerCertificates",
     "crls",
     "revocationState",
+    "machineId",
+    "privateKey",
+    "peerPublicKey",
 ];
 
-/// The `--diagnose` report for a configuration that [`Config::read`] refused only because its
-/// remote still uses retired private-CA certificates; `None` for any other refusal.
+/// The `--diagnose` report for a configuration that [`Config::read`] refused only because it
+/// still describes a pre-0.4.0 remote: certificate or key fields in `remote`, a policy naming
+/// another machine, or an `incoming` grant. `None` for any other refusal.
 ///
-/// Such a configuration never starts. The report lets setup guide re-linking with keys.
+/// Such a configuration never starts. The report lets setup guide re-linking with Tailscale.
 pub fn retired_certificates(path: &Path) -> Option<serde_json::Value> {
-    use std::io::Read;
-    if !path.is_absolute() {
-        return None;
-    }
-    let mut bytes = Vec::new();
-    std::fs::File::open(path)
-        .ok()?
-        .take(32_765)
-        .read_to_end(&mut bytes)
-        .ok()?;
+    let bytes = read_bounded(path)?;
     let mut value = wire::decode_json(&bytes, Role::LocalClient).ok()?;
-    let remote = value.get_mut("remote")?.as_object_mut()?;
-    if !RETIRED_REMOTE_FIELDS
-        .iter()
-        .any(|field| remote.contains_key(*field))
+    let own = value.get("machineId")?.as_str()?.to_owned();
+    let mut retired = false;
+    if let Some(remote) = value
+        .get_mut("remote")
+        .and_then(|remote| remote.as_object_mut())
     {
+        for field in RETIRED_REMOTE_FIELDS {
+            retired |= remote.remove(field).is_some();
+        }
+    }
+    if let Some(policies) = value
+        .get_mut("policies")
+        .and_then(|policies| policies.as_array_mut())
+    {
+        let before = policies.len();
+        policies.retain(|policy| {
+            policy["machineId"] == own.as_str() && policy["direction"] != "incoming"
+        });
+        retired |= policies.len() != before;
+    }
+    if !retired {
         return None;
     }
-    // Only the retired fields may be wrong: the rest must parse once they are removed.
-    for field in RETIRED_REMOTE_FIELDS {
-        remote.remove(field);
-    }
-    remote
-        .entry("peerPublicKey")
-        .or_insert_with(|| serde_json::Value::String("00".repeat(32)));
+    // Only the retired parts may be wrong: the rest must parse once they are removed.
     let config = Config::parse(&serde_json::to_vec(&value).ok()?).ok()?;
     Some(
         serde_json::json!({"version":1,"machineId":config.machine_id,"remote":{"state":"retired-certificates"}}),
     )
-}
-
-impl Config {
-    /// Reports a read-only credential snapshot, never proof of a running gateway or link.
-    ///
-    /// # Errors
-    /// Propagates unexpected noncredential failures rather than hiding them as degradation.
-    pub fn diagnose(&self) -> std::io::Result<serde_json::Value> {
-        let remote = match &self.remote {
-            None => serde_json::json!({"state":"disabled"}),
-            Some(settings) => match settings.clone().prepare() {
-                Ok(prepared) => prepared.diagnostic(),
-                Err(error) => match crate::remote::degradation(&error) {
-                    Some(reason) => serde_json::json!({"state":"degraded", "reason":reason}),
-                    None => return Err(error),
-                },
-            },
-        };
-        Ok(serde_json::json!({"version":1,"machineId":self.machine_id,"remote":remote}))
-    }
 }
