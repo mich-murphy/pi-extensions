@@ -102,19 +102,26 @@ what that computer may do here.
    on its own tailnet IP; the default port is 7443.
 3. On the other, choose `Connect to another computer` and enter the first
    computer's MagicDNS name, like `dev-01`, or its tailnet IP, and the port.
-   Setup resolves a name to its tailnet IP once, when you link.
+   Setup resolves a name to its tailnet IP once, when you link. `Other computer`
+   is required to connect and optional when listening.
 4. Choose `Link`. Review details says what linking checks and what restarts.
 
-The result shows, once, the grant to add to your tailnet policy, built from the
-names involved, for example:
+The result shows, once, the grant to add to your tailnet policy. Setup asks
+Tailscale (`tailscale whois`) which computer `Other computer` is and names it by
+the first label of its MagicDNS name, even when you entered an IP, for example:
 
 ```json
 {"src":["dev-01"],"dst":["laptop"],"ip":["tcp:7443"],"app":{"github.com/mich-murphy/cap/pi-peers":[{"scopes":["local"],"allow":["discover","push"]}]}}
 ```
 
+A listener that leaves `Other computer` empty gets `<other computer>` in the
+grant and is told to replace it with the other computer's tailnet name.
+
 The computer that receives a message enforces the grant. Local `Permissions`
 cover only sessions on this computer. Setup finds `tailscale` in a fixed list of
-install locations and never searches `PATH`. To revoke a link, remove its grant
+install locations, never searches `PATH`, and trusts it by the same rules as the
+gateway (owner root or you, not group- or world-writable, a `#!` wrapper's
+interpreter and targets checked too). To revoke a link, remove its grant
 from your tailnet policy or choose `Remove the remote link`. See
 [Connect two machines](docs/remote-setup.md) for grant examples, limits and manual
 setup.
@@ -260,7 +267,7 @@ A send passes the same scope, push permission, protocol and size checks as `peer
 | `/peers`           | Opens the Peers menu in the terminal UI; prints status elsewhere.                                                                                                                                                                                                                                                                                                                                                                                     |
 | `/peers status`    | Plain status for this session: machine, scopes, inbox, one `Link to <machine>` row per remote link (`Up`, `Reconnecting` or `Down`, with since and next try) and the next step. Exact identifiers are under Technical details. When a remote link is configured it adds the same `Remote link` row as `/peers doctor`.                                                                                                                                |
 | `/peers setup`     | Opens the Peers menu with Setup open; Esc returns to the menu. For an existing setup, the form is filled in from the saved configuration, with repair, linking a remote computer or activating saved settings where needed.                                                                                                                                                                                                                           |
-| `/peers doctor`    | Read-only checks of the config file, gateway, permissions, the remote link (this computer's tailnet name, the endpoint and, when connecting, what the peer may do here; a degraded Tailscale gets one plain next step), each with what to do next, ending with `Live: <status headline>`. When this session knows the remote link state, the remote row adds `Live link: <machine> <state>`. Never starts or connects to the gateway or writes files. |
+| `/peers doctor`    | Read-only checks of the config file, gateway, permissions and remote link (this computer's tailnet name, the endpoint and, when connecting, the peer's StableID, tags and what it may do here; a degraded Tailscale gets one next step), each with a next step, ending with `Live: <status headline>`. When the link state is known, the remote row adds `Live link: <machine> <state>`. Never starts or connects to the gateway or writes files.     |
 | `/peers reconnect` | Retries the connection without losing this session's inbox or state, and never resends uncertain messages.                                                                                                                                                                                                                                                                                                                                            |
 | `/peers reset`     | Opens the Peers menu with Reset open; `Turn off peers` disables setup-owned participation. Keeps the executable; never stops the shared gateway.                                                                                                                                                                                                                                                                                                      |
 

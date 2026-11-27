@@ -40,18 +40,32 @@ capability JSON grants nothing and closes the link.
 On each machine, type `/peers` and choose Setup › **Link a remote computer**.
 
 - **Listen**: this computer listens on its own tailnet IP. The default port is
-  7443.
+  7443. `Other computer` is optional here; fill it in to have the grant name
+  that computer.
 - **Connect**: enter the other computer's MagicDNS name or tailnet IP and its
-  port. Setup resolves a name to an IP once, when you link.
+  port. `Other computer` is required. Setup resolves a name to an IP once, when
+  you link.
+
+When `Other computer` is filled in, Setup asks Tailscale which computer it is:
+`tailscale ip -1 <name>` for a name, then `tailscale whois --json <ip>`. The
+grant uses the first label of that node's MagicDNS name, so a tailnet IP is
+named too. An address Tailscale does not know is refused before anything is
+saved.
 
 Each computer's pi-peers machine name must match its tailnet name, the first
 label of its MagicDNS name: the other gateway learns the name from Tailscale and
 accepts only sessions that carry it. Link checks this and names the fix.
 
 Setup then shows the grant to add to your tailnet policy, built from the two
-machine names. `/peers doctor` shows the Tailscale state, this machine's tailnet
-name and the endpoint. In connect mode it also shows the peer and what that peer
-may do here.
+machine names. Only a listener that left `Other computer` empty sees
+`<other computer>` in the grant, and the text says to replace it with the other
+computer's tailnet name. `/peers doctor` shows the Tailscale state, this
+machine's tailnet name and the endpoint. In connect mode it also shows the peer
+by name, StableID and tags, and what that peer may do here, for example:
+
+```text
+Peer dev-01 (StableID n2, tags tag:dev) may discover, reply in local here.
+```
 
 ## Tailnet policy grants
 
@@ -161,6 +175,14 @@ Otherwise it tries these paths in order and never searches `PATH`:
 - `/usr/bin/tailscale`
 - `/run/current-system/sw/bin/tailscale`
 - `/nix/var/nix/profiles/default/bin/tailscale`
+
+The gateway and Setup trust a `tailscale` command only if it, and each symlink
+on the way to it (at most 8), belongs to root or the current user, and the file
+is executable and neither group- nor world-writable. A `#!` wrapper script, such
+as the macOS `/usr/local/bin/tailscale`, must be under 4 KiB; its interpreter and
+every absolute path to an existing file in it (outside comment lines) must pass
+the same check, and may not themselves be scripts. A command that fails the
+check is refused, not skipped for a later path.
 
 ### 3. Check the configuration
 
