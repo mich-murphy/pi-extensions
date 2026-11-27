@@ -217,11 +217,12 @@ function runExisting(tc: TestCase) {
 
   for (let index = 0; index < steps && !model.closed; index += 1) {
     const before = model.depth;
+    const want = model.top.kind === "outcome" ? 0 : before - 1;
     const back = tc.draw(booleans());
 
     if (back) {
       model.back();
-      depths.push(model.closed || model.depth === 0 ? 0 : before - model.depth - 1);
+      depths.push(model.closed ? 0 : model.depth - want);
     } else {
       model.activate(tc.draw(sampledFrom(routeIds)));
     }
