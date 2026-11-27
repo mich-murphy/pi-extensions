@@ -29,6 +29,6 @@ export {
 export const setupKeys = weighted([
   [10, commands({ bare: 6, setup: 3, status: 2, reset: 1, doctor: 1 })],
   [30, menuKeys(12)],
-  [4, towardApply],
+  [12, towardApply],
   [1, resize],
 ]);
