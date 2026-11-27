@@ -833,11 +833,22 @@ impl Daemon {
         let machine = target["machineId"].as_str().unwrap_or("");
         let remote_origin = self.is_remote(origin);
         let authorized = if remote_origin {
-            machine == self.config.machine_id
-                && self
-                    .remote_descriptor(origin, &request["from"])
-                    .is_some_and(|own| member(own, scope))
-                && self.remote_admits(origin, request, scope)
+            let refusal = if machine != self.config.machine_id {
+                Some("transit")
+            } else if !self
+                .remote_descriptor(origin, &request["from"])
+                .is_some_and(|own| member(own, scope))
+            {
+                Some("source")
+            } else if !self.remote_admits(origin, request, scope) {
+                Some("caps")
+            } else {
+                None
+            };
+            if let Some(reason) = refusal {
+                self.audit_refusal(origin, request, reason);
+            }
+            refusal.is_none()
         } else {
             // Another machine's gateway decides what reaches its sessions.
             self.descriptor(origin)
@@ -1062,6 +1073,9 @@ impl Daemon {
     }
     fn disconnect(&mut self, id: ConnectionId) {
         let remote = self.is_remote(id);
+        if remote {
+            self.audit_link_down(id);
+        }
         self.withdraw(id);
         let affected: Vec<_> = self
             .forwards

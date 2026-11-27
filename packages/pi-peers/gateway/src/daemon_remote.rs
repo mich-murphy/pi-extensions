@@ -203,6 +203,39 @@ impl Daemon {
             .and_then(|client| client.descriptor.as_ref())
             .map_or(Value::Null, |descriptor| descriptor["peer"].clone())
     }
+    /// One audit line per refused remote frame: who, which verb, scope and ids, and why.
+    /// Never the content or labels.
+    pub(super) fn audit_refusal(&mut self, id: ConnectionId, request: &Value, reason: &str) {
+        let stable_id = self
+            .clients
+            .get(&id)
+            .and_then(|client| client.remote.as_ref())
+            .map(|remote| remote.peer.stable_id.clone());
+        let message = &request["message"];
+        let verb = match (message["kind"].as_str(), message.get("replyTo")) {
+            (Some("reply"), _) | (Some("update"), Some(_)) => "reply",
+            (Some(_), _) => "push",
+            _ => request["op"].as_str().unwrap_or("unknown"),
+        };
+        self.events.emit(
+            &format!("refused:{reason}:{verb}"),
+            json!({"event":"refused","stableId":stable_id,"verb":verb,"scope":request["scopeId"],"rid":request["rid"],"messageId":message["id"],"reason":reason}),
+        );
+    }
+    /// The link-down audit line, with the identity the link was pinned to.
+    pub(super) fn audit_link_down(&mut self, id: ConnectionId) {
+        let Some(remote) = self
+            .clients
+            .get(&id)
+            .and_then(|client| client.remote.as_ref())
+        else {
+            return;
+        };
+        let peer = &remote.peer;
+        let line = json!({"event":"link_down","stableId":peer.stable_id,"name":peer.machine_id,"tags":peer.tags,"addresses":peer.addresses,"caps":peer.caps.digest(),"replies":remote.replies.len()});
+        let key = format!("link_down:{}", peer.stable_id);
+        self.events.emit(&key, line);
+    }
     /// Takes one result of the link driver: an identified stream becomes the active remote
     /// unless one already is; a refusal only names the peer for link state.
     pub(super) fn link_step(
@@ -632,6 +665,7 @@ impl Daemon {
                 self.respond(id, &request, json!({"tag":"ok","value":{}}));
             }
             Some("state.get" | "state.list" | "interest.add" | "interest.remove") => {
+                self.audit_refusal(id, &request, "retired");
                 self.reject(id, &request, "forbidden", None);
             }
             Some("send") => {

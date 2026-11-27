@@ -159,7 +159,6 @@ impl Replies {
     }
 
     /// Entries held, closed and expired ones included until they are pruned.
-    #[cfg(test)]
     pub(crate) fn len(&self) -> usize {
         self.entries.len()
     }
