@@ -121,6 +121,12 @@ describe("ledger", () => {
     });
   });
 
+  test("skips JSON lines that are not ledger events", () => {
+    const good = signal({ n: 1, session: "s" });
+    const text = ["null", "[1]", '"text"', "{}", JSON.stringify(good)].join("\n");
+    expect(parseLedger(text)).toStrictEqual({ events: [good], skipped: 4 });
+  });
+
   test("keeps line and paragraph separators inside strings", async () => {
     await appendEvent(file, { ...draft, error: "a b c" }, fakeClock());
     const { events } = await readLedger(file);

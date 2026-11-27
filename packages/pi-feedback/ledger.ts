@@ -136,7 +136,6 @@ export type Clock = { readonly now: () => Date; readonly id: () => string };
 
 const systemClock: Clock = { now: () => new Date(), id: randomUUID };
 const decodeEvent = Schema.decodeUnknownOption(LedgerEvent);
-const decodeLine = Schema.decodeUnknownOption(Schema.fromJsonString(LedgerEvent));
 
 export function ledgerPath(agentDir: string): string {
   return join(agentDir, "harness-feedback", "ledger.jsonl");
@@ -178,6 +177,16 @@ export async function appendEvent(
   return event;
 }
 
+function parseJson(line: string): Option.Option<unknown> {
+  try {
+    const value: unknown = JSON.parse(line);
+
+    return Option.some(value);
+  } catch {
+    return Option.none();
+  }
+}
+
 export function parseLedger(text: string): LedgerRead {
   const events: Array<LedgerEvent> = [];
   let skipped = 0;
@@ -187,7 +196,7 @@ export function parseLedger(text: string): LedgerRead {
       continue;
     }
 
-    const event = Option.getOrUndefined(decodeLine(line));
+    const event = Option.getOrUndefined(Option.flatMap(parseJson(line), decodeEvent));
 
     if (event === undefined) {
       skipped += 1;
