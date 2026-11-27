@@ -837,11 +837,6 @@ impl Daemon {
         let authorized = if remote_origin {
             let refusal = if machine != self.config.machine_id {
                 Some("transit")
-            } else if !self
-                .remote_descriptor(origin, &request["from"])
-                .is_none_or(|own| member(own, scope))
-            {
-                Some("source")
             } else if !self.remote_admits(origin, request, scope) {
                 Some("caps")
             } else {

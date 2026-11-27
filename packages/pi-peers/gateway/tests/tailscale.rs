@@ -735,6 +735,66 @@ mod linked {
     }
 
     #[test]
+    fn a_sender_seen_in_fewer_scopes_still_sends_where_caps_allow() {
+        // beta may discover alpha's sessions only in team but answer in private too, so its roster
+        // lists alpha's session in team alone. That must not bound where the session sends.
+        let beta = beta(
+            Some(&json!([{"scopes":["team","private"],"allow":["discover","push"]}])),
+            &[],
+        );
+        let mut b = beta.connect();
+        let beta_peer = register(&mut b, "beta-session", 1);
+        let alpha = alpha(
+            &json!([
+                {"scopes":["team"],"allow":["discover","reply"]},
+                {"scopes":["private"],"allow":["reply"]}
+            ]),
+            beta.address(),
+        );
+        let mut a = alpha.connect();
+        let alpha_peer = register(&mut a, "alpha-session", 3);
+        let mut observer = alpha.connect();
+        register(&mut observer, "observer", 4);
+        await_peer(&mut observer, 5, &beta_peer);
+        let mut watcher = beta.connect();
+        register(&mut watcher, "watcher", 7);
+        await_peer(&mut watcher, 9, &alpha_peer);
+        let original = request(30);
+        send_in(&mut a, &beta_peer, 30, "private", &original);
+        let delivery = read(&mut b);
+        assert_eq!(
+            delivery["message"]["id"], original["id"],
+            "beta's session receives the request in private"
+        );
+        write(&mut b, &receipt(&delivery, "none"));
+        assert_eq!(
+            read(&mut a)["outcome"]["tag"],
+            "admitted",
+            "the request in private is admitted"
+        );
+        let id = original["id"].as_str().expect("message id");
+        let answer = reply_answer("reply", 31, &alpha_peer, id);
+        send_in(&mut b, &alpha_peer, 31, "private", &answer);
+        let answered = read(&mut a);
+        assert_eq!(
+            answered["message"]["kind"], "reply",
+            "alpha receives the reply"
+        );
+        write(&mut a, &receipt(&answered, "verified"));
+        assert_eq!(
+            read(&mut b)["outcome"]["tag"],
+            "admitted",
+            "the reply in private is admitted"
+        );
+        assert!(
+            !beta.stderr().contains("link_down"),
+            "the link never dropped: {}",
+            beta.stderr()
+        );
+        drop(alpha);
+    }
+
+    #[test]
     fn a_reply_only_remote_cannot_forge_answers_or_send_requests() {
         let mut link = reply_only_link();
         let to = link.alpha_peer.clone();

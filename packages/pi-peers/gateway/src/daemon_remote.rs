@@ -9,7 +9,7 @@ use tokio::task::JoinSet;
 use tokio::time::Instant;
 
 use super::{
-    Client, Daemon, MAX_CONNECTIONS, Refresh, Remote, Step, Watch, encoded_length, member, project,
+    Client, Daemon, MAX_CONNECTIONS, Refresh, Remote, Step, Watch, encoded_length, project,
     random_id,
 };
 use crate::breaker::LinkView;
@@ -687,17 +687,12 @@ impl Daemon {
                     self.fail(id);
                     return;
                 }
-                // An advertised sender must be in the scope. A remote this node never received
-                // a roster from (it holds no discover there) still sends as its own machine;
-                // caps and routing then decide.
-                let valid_source = match self.remote_descriptor(id, &request["from"]) {
-                    Some(descriptor) => {
-                        member(descriptor, request["scopeId"].as_str().unwrap_or(""))
-                    }
-                    None => self
-                        .linked_machine(id)
-                        .is_some_and(|machine| request["from"]["machineId"] == machine),
-                };
+                // The sender must be a session of the linked machine. Its roster here lists only
+                // the scopes this node may discover, so it cannot bound where the session sends;
+                // the caps it holds here and the reply table decide that.
+                let valid_source = self
+                    .linked_machine(id)
+                    .is_some_and(|machine| request["from"]["machineId"] == machine);
                 let duplicate = self.forwards.values().any(|forward| {
                     forward.origin == id && forward.request["rid"] == request["rid"]
                 }) || self
@@ -706,6 +701,8 @@ impl Daemon {
                     .and_then(|client| client.watch.as_ref())
                     .is_some_and(|watch| request["rid"] == watch.rid);
                 if !valid_source || duplicate {
+                    let reason = if valid_source { "duplicate" } else { "source" };
+                    self.audit_refusal(id, &request, reason);
                     self.fail(id);
                 } else {
                     self.forward(id, request);
