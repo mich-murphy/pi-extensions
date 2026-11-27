@@ -283,6 +283,22 @@ describe("native chat viewport", () => {
     f.adapter.dispose();
   });
 
+  test("reuses the prompt index across scroll moves and rebuilds it after width or output changes", () => {
+    const f = fixture();
+    f.render();
+    f.transcript.scrollTo(40);
+    expect(plain(f.render().lines)[0]?.trim()).toBe("❯ second prompt");
+    f.transcript.scrollTo(8);
+    expect(plain(f.render().lines)[0]?.trim()).toBe("❯ first prompt");
+    f.transcript.scrollTo(8);
+    expect(plain(f.render(30).lines)[0]?.trim()).toBe("❯ first prompt");
+    f.document.clear();
+    f.document.addChild(new Text("no prompt\n".repeat(40), 0, 0));
+    f.transcript.scrollTo(8);
+    expect(plain(f.render(30).lines)[0]).not.toContain("❯");
+    f.adapter.dispose();
+  });
+
   test("near-bottom and resize converge without render loops or blank reserved row", () => {
     const f = fixture();
     f.render();
