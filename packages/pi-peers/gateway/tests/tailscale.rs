@@ -865,6 +865,49 @@ mod linked {
         }
     }
 
+    /// The parsed `link_up` audit line, waiting up to 3 s for it.
+    fn link_up(gateway: &Gateway) -> Value {
+        assert!(
+            gateway.logged("\"event\":\"link_up\""),
+            "{}",
+            gateway.stderr()
+        );
+        gateway
+            .stderr()
+            .lines()
+            .filter_map(|line| serde_json::from_str::<Value>(line).ok())
+            .find(|line| line["event"] == "link_up")
+            .expect("link_up line")
+    }
+
+    #[test]
+    fn link_up_audit_names_the_peer_login() {
+        let beta = beta(Some(&json!([{"scopes":["team"],"allow":["push"]}])), &[]);
+        let (mut stream, _) = link(&beta, &[]);
+        assert!(alive(&mut stream));
+        let line = link_up(&beta);
+        assert_eq!(line["stableId"], "n-alpha");
+        assert_eq!(line["loginName"], "tagged-devices", "{line}");
+        drop(stream);
+        drop(beta);
+        let beta = Gateway::new("beta", BETA);
+        beta.file(
+            &format!("whois-{ALPHA}.json"),
+            &json!({"Node":{"ID":7,"StableID":"n-alpha","Name":"alpha.example.ts.net.","Addresses":[format!("{ALPHA}/32")]},"UserProfile":{"ID":3,"LoginName":"alice@example.com","DisplayName":"Alice"},"CapMap":{"github.com/mich-murphy/cap/pi-peers":[{"scopes":["team"],"allow":["push"]}]}}).to_string(),
+        );
+        let mut beta = beta;
+        let remote = beta.remote("listen", &format!("{BETA}:0"));
+        beta.start(&[], Some(remote));
+        let (mut stream, _) = link(&beta, &[]);
+        assert!(alive(&mut stream));
+        let line = link_up(&beta);
+        assert_eq!(line["loginName"], "alice@example.com", "{line}");
+        assert!(
+            !beta.stderr().contains("Alice"),
+            "only the login name is logged"
+        );
+    }
+
     #[test]
     fn a_connector_whose_listener_holds_no_caps_stays_linked_and_refuses_its_frames() {
         // The test process is beta, listening on 127.0.0.2; alpha's whois says beta holds no caps.

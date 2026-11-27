@@ -302,7 +302,7 @@ impl Daemon {
         } = authenticated;
         self.events.emit(
             &format!("link_up:{}", peer.stable_id),
-            json!({"event":"link_up","stableId":peer.stable_id,"name":peer.machine_id,"tags":peer.tags,"addresses":peer.addresses,"local":local.to_string(),"remote":remote.to_string(),"caps":peer.caps.digest(),"ignored":peer.ignored.any().then(|| json!({"entries":peer.ignored.entries,"verbs":peer.ignored.verbs,"scopes":peer.ignored.scopes}))}),
+            json!({"event":"link_up","stableId":peer.stable_id,"name":peer.machine_id,"loginName":peer.login_name,"tags":peer.tags,"addresses":peer.addresses,"local":local.to_string(),"remote":remote.to_string(),"caps":peer.caps.digest(),"ignored":peer.ignored.any().then(|| json!({"entries":peer.ignored.entries,"verbs":peer.ignored.verbs,"scopes":peer.ignored.scopes}))}),
         );
         let source = SourceEpoch::new();
         let withdrawal = source.shared_guard();

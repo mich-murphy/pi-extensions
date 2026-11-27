@@ -95,6 +95,8 @@ pub(crate) struct Peer {
     /// The first label of its `MagicDNS` name: the `machineId` it routes as.
     pub(crate) machine_id: String,
     pub(crate) tags: Vec<String>,
+    /// The owner's login (`UserProfile.LoginName`); `tagged-devices` for tagged nodes.
+    pub(crate) login_name: String,
     pub(crate) addresses: Vec<IpAddr>,
     /// What it may do to this node's sessions.
     pub(crate) caps: Caps,
@@ -368,6 +370,13 @@ struct WhoisJson {
     node: Option<NodeJson>,
     #[serde(rename = "CapMap")]
     cap_map: Option<HashMap<String, Box<RawValue>>>,
+    #[serde(rename = "UserProfile")]
+    user: Option<UserJson>,
+}
+#[derive(Deserialize)]
+struct UserJson {
+    #[serde(rename = "LoginName")]
+    login_name: Option<String>,
 }
 #[derive(Deserialize)]
 struct NodeJson {
@@ -435,6 +444,10 @@ pub(crate) fn identify(
         stable_id: node.stable_id,
         machine_id: machine_id.to_owned(),
         tags: node.tags.unwrap_or_default(),
+        login_name: whois
+            .user
+            .and_then(|user| user.login_name)
+            .unwrap_or_default(),
         addresses,
         caps,
         ignored,
@@ -602,6 +615,7 @@ mod tests {
         assert_eq!(peer.machine_id, "dev-01");
         assert_eq!(peer.stable_id, "nDev");
         assert_eq!(peer.tags, vec!["tag:dev".to_owned()]);
+        assert_eq!(peer.login_name, "tagged-devices");
         assert!(peer.caps.allows("team", caps::Verb::Discover));
         assert!(!peer.caps.allows("team", caps::Verb::Push));
         let mut none = answer();
