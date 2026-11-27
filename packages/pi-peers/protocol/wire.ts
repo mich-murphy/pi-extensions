@@ -1,6 +1,6 @@
 import { Schema } from "effect";
 import { decodeJson, MAX_BODY_BYTES, ProtocolError } from "./json.js";
-import type { ObjectBytesVisitor } from "./json.js";
+import type { ObjectBytesVisitor, ScannedJson } from "./json.js";
 import { Frame, MAX_AUTHORED_BYTES, retiredOps } from "./schema.js";
 
 export const MAX_DESCRIPTOR_BYTES = 512;
@@ -114,10 +114,9 @@ function checkDescriptor(value: Descriptor["peer"]): void {
   }
 }
 
-export function validateFrame(value: Schema.Json, role: BoundaryRole): Frame {
+function checkedFrame(value: Schema.Json, role: BoundaryRole): Frame {
   try {
     const frame = decode(value);
-    decodeJson(Buffer.from(JSON.stringify(frame), "utf8"));
     checkRole(frame, role);
     checkDescriptorBounds(frame);
 
@@ -129,6 +128,24 @@ export function validateFrame(value: Schema.Json, role: BoundaryRole): Frame {
   } catch {
     throw new ProtocolError();
   }
+}
+
+function encodedBody(frame: Frame): Buffer {
+  const body = Buffer.from(JSON.stringify(frame), "utf8");
+  decodeJson(body);
+
+  return body;
+}
+
+function scannedFrame(value: ScannedJson, role: BoundaryRole): Frame {
+  return checkedFrame(value, role);
+}
+
+export function validateFrame(value: Schema.Json, role: BoundaryRole): Frame {
+  const frame = checkedFrame(value, role);
+  encodedBody(frame);
+
+  return frame;
 }
 
 function decodeBody(bytes: Uint8Array, role: BoundaryRole): Frame {
@@ -152,7 +169,7 @@ function decodeBody(bytes: Uint8Array, role: BoundaryRole): Frame {
     }
   };
 
-  const frame = validateFrame(decodeJson(bytes, inspect), role);
+  const frame = scannedFrame(decodeJson(bytes, inspect), role);
 
   if (
     snapshotOverflow ||
@@ -177,9 +194,7 @@ export function decodeFrame(bytes: Uint8Array, role: BoundaryRole): Frame {
 }
 
 export function encodeFrame(value: Schema.Json, role: BoundaryRole): Uint8Array {
-  const frame = validateFrame(value, role);
-  const body = Buffer.from(JSON.stringify(frame), "utf8");
-  decodeJson(body);
+  const body = encodedBody(checkedFrame(value, role));
   const bytes = new Uint8Array(body.length + 4);
   new DataView(bytes.buffer).setUint32(0, body.length, false);
   bytes.set(body, 4);
