@@ -87,8 +87,12 @@ The gateway writes coalesced JSON events to stderr, at most one per kind every 3
 ## Trust model
 
 - Gateways talk over TLS 1.3 only, with mutual authentication. Session resumption and early data are off.
-- Each gateway has one Ed25519 key and pins exactly one peer public key, like SSH `known_hosts`. Both sides present RFC 7250 raw public keys; there is no CA, certificate, CRL or revocation floor. The address you dial is not an identity.
-- Pinning your own key is refused, so a connection reflected back to its own gateway cannot pass.
-- Nothing expires and links need no clock. A link lasts until ping/close liveness or loss ends it. To revoke a peer, pin a different key or remove the remote.
-- Reachability is separate: run the link inside Tailscale (listener on its tailnet IP) or an SSH forward.
+- Remote links require Tailscale. Gateways speak plain TCP (frame protocol v2) inside the tailnet; WireGuard encrypts and authenticates the path. There are no keys, certificates or TLS.
+- Identity and remote permissions come only from the local `tailscaled`, through `tailscale whois --json <ip>`. The remote's machine name is the first label of its tailnet name; a peer cannot choose it. Before any byte is read or sent, the socket's local address must be one of this node's tailnet IPs, and whois must resolve the peer IP to another, unexpired node.
+- Remote authorization lives in the tailnet policy file as app capability `github.com/mich-murphy/cap/pi-peers`: a list of `{"scopes": [...], "allow": [...]}` entries. The granted set is the union over entries of scopes × actions, never a union of scopes and actions across entries. Unknown actions are ignored and `"*"` grants nothing.
+- The destination enforces. A grant from X to Y says what X's sessions may do to Y's sessions: `discover` (receive Y's roster entries in those scopes), `push` (deliver requests, updates and replies) or `reply`. There is no outgoing policy for remotes, and the adapter does not filter remote roster entries or sends by local policy.
+- `reply` admits responses to messages this node sent to that node: a `reply`, or an `update` with `replyTo`, to the exact local sender, from the exact remote recipient, in the same scope, within 600 s of the first send. One reply closes the entry; at most 8 updates. `push` implies `reply`; a `request` is never admitted under `reply`. Refusals use `forbidden`.
+- Caps are re-read every 15 s, so a revocation takes effect within about 15-30 s plus netmap propagation.
+- Whoever controls the tailnet's coordination server or policy file decides both identity and permissions. Tailnet Lock signs node keys only, not policy.
+- Local `policies` govern sessions on the same machine only, and may name only this machine. pi-peers without Tailscale keeps working locally.
 - The local socket trusts the same user account, not individual processes.
