@@ -53,6 +53,12 @@ const TOKEN = textGen({
   maxSize: 12,
 });
 
+const BARE_SUFFIXES = ["", "xml", "json", "-xml", ".json"];
+
+const unlistedToken = tuples(TOKEN, sampledFrom(BARE_SUFFIXES)).map(
+  ([token, suffix]) => `${token}${suffix}`,
+);
+
 const caseFlags = arrays(booleans(), { minSize: 40, maxSize: 40 });
 const padding = tuples(sampledFrom(PADDING), sampledFrom(PADDING));
 
@@ -172,7 +178,7 @@ describe("content type properties", () => {
 
   test("unlisted application types without a text suffix are binary", () => {
     new Hegel((tc) => {
-      const token = tc.draw(TOKEN, "token");
+      const token = tc.draw(unlistedToken, "token");
       assertUnlistedIsBinary(token, tc.draw(caseFlags, "case"), tc.draw(padding, "padding"));
     })
       .settings(settings)
