@@ -37,7 +37,7 @@ const owners = createAttribution(
 const readOnly = (name: string): boolean =>
   isReadOnlyTool(tools.find((tool) => tool.name === name));
 
-type Scores = Pick<VerdictEvent, "harnessPath" | "pathExisted" | "outsideService">;
+type Scores = Pick<VerdictEvent, "harnessPath" | "outsideService">;
 
 type Fixture = {
   readonly label: string;
@@ -45,11 +45,12 @@ type Fixture = {
   readonly tool: string;
   readonly error: string;
   readonly scores: Scores;
+  readonly pathExisted?: boolean;
   readonly siblings?: ReadonlyArray<BatchCall>;
   readonly args?: BatchCall["args"];
 };
 
-const harnessLike: Scores = { harnessPath: 0.9, pathExisted: 0.9, outsideService: 0.02 };
+const harnessLike: Scores = { harnessPath: 0.9, outsideService: 0.02 };
 
 const FIXTURES: ReadonlyArray<Fixture> = [
   {
@@ -57,7 +58,7 @@ const FIXTURES: ReadonlyArray<Fixture> = [
     piCore: false,
     tool: "pi_claude_sdk_validation_error",
     error: "The SDK tried to call an undeclared tool.",
-    scores: { harnessPath: 0.05, pathExisted: 0.1, outsideService: 0.05 },
+    scores: { harnessPath: 0.05, outsideService: 0.05 },
   },
   {
     label: "pi-claude long scratch socket path",
@@ -78,42 +79,42 @@ const FIXTURES: ReadonlyArray<Fixture> = [
     piCore: false,
     tool: "bash",
     error: "find: unknown predicate `-home-u-dev-x'",
-    scores: { harnessPath: 0.2, pathExisted: 0.8, outsideService: 0.03 },
+    scores: { harnessPath: 0.2, outsideService: 0.03 },
   },
   {
     label: "unrelated git output scored as harness",
     piCore: false,
     tool: "bash",
     error: "a0ba8762 e1285884 DESIGN.md | 1 + README.md | 7 ++++++-",
-    scores: { harnessPath: 0.83, pathExisted: 0.9, outsideService: 0.02 },
+    scores: { harnessPath: 0.83, outsideService: 0.02 },
   },
   {
     label: "project build failure",
     piCore: false,
     tool: "bash",
     error: "make: *** [all] Error 2",
-    scores: { harnessPath: 0.1, pathExisted: 0.5, outsideService: 0.05 },
+    scores: { harnessPath: 0.1, outsideService: 0.05 },
   },
   {
     label: "edit text mismatch",
     piCore: false,
     tool: "edit",
     error: "Could not find the exact text in /home/u/dev/x/a.ts.",
-    scores: { harnessPath: 0.09, pathExisted: 0.9, outsideService: 0.03 },
+    scores: { harnessPath: 0.09, outsideService: 0.03 },
   },
   {
     label: "command timeout",
     piCore: false,
     tool: "bash",
     error: "Command timed out after 60 seconds",
-    scores: { harnessPath: 0.4, pathExisted: 0.5, outsideService: 0.07 },
+    scores: { harnessPath: 0.4, outsideService: 0.07 },
   },
   {
     label: "outside web page missing",
     piCore: false,
     tool: "webfetch",
     error: "Request failed (404 Not Found).",
-    scores: { harnessPath: 0.03, pathExisted: 0.1, outsideService: 0.97 },
+    scores: { harnessPath: 0.03, outsideService: 0.97 },
   },
   {
     label: "read of a file a sibling call was still writing",
@@ -129,9 +130,10 @@ const FIXTURES: ReadonlyArray<Fixture> = [
   {
     label: "Pi session directory name read as an option",
     piCore: true,
+    pathExisted: true,
     tool: "bash",
     error: "ls: unrecognized option '--home-u-dev-x--'",
-    scores: { harnessPath: 0.86, pathExisted: 0.9, outsideService: 0.03 },
+    scores: { harnessPath: 0.86, outsideService: 0.03 },
   },
 ];
 
@@ -173,6 +175,10 @@ function eventsFor(fixture: Fixture, start: number): Array<LedgerEvent> {
 
     if (attribution.evidence !== undefined) {
       event.evidence = attribution.evidence;
+    }
+
+    if (fixture.pathExisted !== undefined) {
+      event.pathExisted = fixture.pathExisted;
     }
 
     return event;

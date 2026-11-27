@@ -32,7 +32,7 @@ Code decides which extension owns each record:
 - pi-claude, when the error names a Claude SDK scratch directory (`/tmp/claude-<uid>/…`) or a Claude project directory name;
 - otherwise `unattributed`, including Pi's built-in tools.
 
-A failure of a Pi built-in tool whose error names Pi's sessions directory or a Pi session directory name is marked as Pi path evidence. It stays `unattributed`.
+A failure of a Pi built-in tool whose error names Pi's sessions directory or a Pi session directory name is marked as Pi path evidence. It stays `unattributed`. When the failure is recorded, code also checks on disk whether every Pi path the error names exists, and stores the answer as `pathExisted`.
 
 A report that code leaves `unattributed` can still be moved by the classifier (see below). Signals never are.
 
@@ -50,10 +50,10 @@ Calls a script makes are checked the same way as calls in one message: a failed 
 
 Pi core problems are recorded but never queued for a fix here. The queue shows a group as `pi-core` only when all of these hold, and `unattributed` otherwise:
 
-- every record is a Pi built-in tool failure that names a Pi path;
+- every record is a Pi built-in tool failure that names a Pi path, and every Pi path it names existed when it was recorded;
 - no record was marked `parallel-batch`;
 - records come from at least two sessions;
-- for every fingerprint in the group, a stored classifier verdict says the harness created the path (≥ 0.7), the path existed (≥ 0.7) and no outside service failed (< 0.3).
+- for every fingerprint in the group, a stored classifier verdict says the harness created the path (≥ 0.7) and no outside service failed (< 0.3).
 
 A verdict that an outside service failed (≥ 0.9) also stops its records from counting towards a group.
 
@@ -63,11 +63,11 @@ Records are appended to `~/.pi/agent/harness-feedback/ledger.jsonl` (or under `P
 
 ## Classification
 
-When Pi has a TypeSafe key, each new record is classified in the background with TypeSafe's Jev model, pinned to `jev-1.14.0`. Without a key nothing is sent and records stay unclassified. Records from batch-ordered calls are not sent. An `unattributed` record without Pi path evidence is sent only if it is a report, and only for the owner question below.
+When Pi has a TypeSafe key, each new record is classified in the background with TypeSafe's Jev model, pinned to `jev-1.14.0`. Without a key nothing is sent and records stay unclassified. Records from batch-ordered calls are not sent. An `unattributed` record is sent for a verdict only when it names a Pi path that existed; otherwise it is sent only if it is a report, and only for the owner question below.
 
 Each call gives up after 30 seconds. A missing key, a failed call or a timeout only leaves a record unclassified; recording and the tool's result never wait for the classifier.
 
-- **Verdict.** Once per fingerprint, Jev is asked whether the error involves a path the harness created, whether that path existed, and whether an outside service caused it. It sees the tool name, the error text (at most 600 characters) and the call's arguments (redacted, at most 400 characters). For a report it sees the component, the kind and what happened.
+- **Verdict.** Once per fingerprint, Jev is asked whether the error involves a path the harness created and whether an outside service caused it. Whether the path existed is checked by code, not asked. It sees the tool name, the error text (at most 600 characters) and the call's arguments (redacted, at most 400 characters). For a report it sees the component, the kind and what happened.
 - **Owner.** Once per fingerprint, for a report that code leaves `unattributed`, Jev is asked which package owns the failing component: one of this repository's extensions, Pi itself or another extension. It sees the kind, component, summary, what was expected and what happened, with your home directory written as `~`. When ledgers from several machines hold different answers for a fingerprint, the one with the highest probability counts. The queue moves the report's group to the named extension only when that answer is one of this repository's extensions with a probability of 0.9 or more. An answer of Pi itself or another extension changes nothing, so Pi core is still decided only by the rules above. Reports whose text contains `mcp__` are not asked about and stay `unattributed`. This includes reports that quote pi-claude's own `mcp__pi__…` tool names. A resolve or reopen that names the report's original `unattributed` group ID still applies to the moved group.
 - **Same cause.** Once per pair, a new fingerprint is compared with up to 12 open groups that have the same owner. Groups whose answer is 0.7 or more merge, under the earliest fingerprint. A resolve or reopen that names a merged group's old ID still applies.
 

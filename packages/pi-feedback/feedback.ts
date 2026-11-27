@@ -1,3 +1,4 @@
+import { lstat } from "node:fs/promises";
 import { StringEnum } from "@earendil-works/pi-ai";
 import type { JsonObject } from "@earendil-works/pi-ai";
 import type {
@@ -189,14 +190,38 @@ export function errorText(toolResult: unknown): string {
     : "";
 }
 
+async function exists(path: string): Promise<boolean> {
+  return lstat(path).then(
+    () => true,
+    () => false,
+  );
+}
+
+async function withPathFact(
+  attribution: Attribution,
+  paths: ReadonlyArray<string>,
+): Promise<Attribution> {
+  if (attribution.evidence === undefined || paths.length === 0) {
+    return attribution;
+  }
+
+  const found = await Promise.all(paths.map(async (path) => exists(path)));
+
+  return { ...attribution, pathExisted: found.every(Boolean) };
+}
+
 function recordProvenance(
-  draft: Types.Mutable<Pick<RecordEvent, "evidence" | "piVersion" | "model">>,
+  draft: Types.Mutable<Pick<RecordEvent, "evidence" | "pathExisted" | "piVersion" | "model">>,
   ctx: FeedbackContext,
   piVersion: string,
   attribution: Attribution,
 ): void {
   if (attribution.evidence !== undefined) {
     draft.evidence = attribution.evidence;
+  }
+
+  if (attribution.pathExisted !== undefined) {
+    draft.pathExisted = attribution.pathExisted;
   }
 
   draft.piVersion = piVersion;
@@ -343,9 +368,10 @@ export function registerFeedback(
       );
     }
 
-    const attribution = owners.forReport(params.component, params.actual);
-    const { owner } = attribution;
     filed.add(key);
+    const named = owners.forReport(params.component, params.actual);
+    const attribution = await withPathFact(named, owners.piPathsIn(params.actual));
+    const { owner } = attribution;
 
     try {
       const event = await appendEvent(
@@ -427,10 +453,11 @@ export function registerFeedback(
       return;
     }
 
-    const attribution = owners.forSignal(event.toolName, error);
     const calls = ended.batch ?? batch;
     const failing = calls.find((call) => call.id === event.toolCallId);
     const ordered = failing !== undefined && isParallelBatch(failing, error, calls, readOnly);
+    const named = owners.forSignal(event.toolName, error);
+    const attribution = await withPathFact(named, owners.piPathsIn(error));
 
     try {
       const recorded = await appendEvent(

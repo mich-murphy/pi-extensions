@@ -13,7 +13,7 @@ import type { FakeAnswer } from "./fake-classifier.ts";
 import { fakePi } from "./fake-pi.ts";
 
 const PACKAGES = "/repo/packages";
-const scores = { harnessPath: 0.2, pathExisted: 0.3, outsideService: 0.05 };
+const scores = { harnessPath: 0.2, outsideService: 0.05 };
 
 function answer(context: ClassifierContext) {
   return "sameCause" in context.questions ? { sameCause: 0.9 } : scores;

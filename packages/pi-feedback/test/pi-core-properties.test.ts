@@ -43,6 +43,7 @@ function drawEvents(tc: TestCase): Drawn {
 
     if (piPath) {
       options.evidence = "pi-path";
+      options.pathExisted = tc.draw(booleans(), "pathExisted");
     }
 
     if (batchOrdered) {
@@ -57,7 +58,6 @@ function drawEvents(tc: TestCase): Drawn {
       verdicts.push(
         verdictEvent(100 + n, fingerprint, {
           harnessPath: drawScore(tc, "harnessPath"),
-          pathExisted: drawScore(tc, "pathExisted"),
           outsideService: drawScore(tc, "outsideService"),
         }),
       );
@@ -83,6 +83,7 @@ describe("Pi core label properties", () => {
         assert.equal(group.owner, "unattributed");
         assert.ok(group.sessions >= 2);
         assert.ok(own.every((record) => record.evidence === "pi-path"));
+        assert.ok(own.every((record) => record.pathExisted === true));
         assert.ok(own.every((record) => record.cause === undefined));
       }
     });

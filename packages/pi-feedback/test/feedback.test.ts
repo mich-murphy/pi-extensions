@@ -1,4 +1,4 @@
-import { chmodSync, mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
@@ -242,6 +242,70 @@ describe("harness feedback extension", () => {
       }),
     ).toBe("Harness feedback filed (pi-claude, 0123456789ab) Scratch");
     expect(pi.render(FEEDBACK_NOTE_TYPE, { group: 1 })).toBe("");
+  });
+});
+
+describe("whether a named Pi path existed", () => {
+  let root: string;
+  let agentDir: string;
+  let ledger: string;
+  let pi: ReturnType<typeof fakePi>;
+
+  beforeEach(() => {
+    root = realpathSync(mkdtempSync(join(tmpdir(), "pi-feedback-path-")));
+    agentDir = join(root, ".pi", "agent");
+    mkdirSync(join(agentDir, "sessions"), { recursive: true });
+    writeFileSync(join(agentDir, "sessions", "here.jsonl"), "");
+    ledger = ledgerPath(join(root, "ledger"));
+    pi = fakePi(PACKAGES, agentDir);
+    registerFeedback(pi.pi, {
+      ledger,
+      packagesDir: PACKAGES,
+      ownPackages: ["pi-claude"],
+      agentDir,
+      home: root,
+      piVersion: "1.6.0",
+      clock: fakeClock(),
+    });
+  });
+
+  afterEach(() => {
+    rmSync(root, { recursive: true, force: true });
+  });
+
+  test("records that every Pi path a failure names exists", async () => {
+    await pi.end("read", true, `EACCES: permission denied, open '${agentDir}/sessions/here.jsonl'`);
+    await expect(ledgerEvents(ledger)).resolves.toMatchObject([
+      { owner: "unattributed", evidence: "pi-path", pathExisted: true },
+    ]);
+  });
+
+  test("records that a named Pi path was missing", async () => {
+    await pi.end(
+      "read",
+      true,
+      `ENOENT: '${agentDir}/sessions/here.jsonl' and '${agentDir}/sessions/gone.jsonl'`,
+    );
+    await expect(ledgerEvents(ledger)).resolves.toMatchObject([
+      { evidence: "pi-path", pathExisted: false },
+    ]);
+  });
+
+  test("checks a report's Pi path too", async () => {
+    await pi.call({
+      ...params,
+      component: "read",
+      actual: `EACCES: ~/.pi/agent/sessions/here.jsonl`,
+    });
+    await expect(ledgerEvents(ledger)).resolves.toMatchObject([
+      { type: "report", evidence: "pi-path", pathExisted: true },
+    ]);
+  });
+
+  test("leaves the fact out when no Pi path is named", async () => {
+    await pi.end("bash", true, "make: *** [all] Error 2");
+    const [event] = await ledgerEvents(ledger);
+    expect(event).not.toHaveProperty("pathExisted");
   });
 });
 

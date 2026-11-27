@@ -38,9 +38,7 @@ function cliPath(): string {
   return join(PI_PACKAGE, manifest.bin.pi);
 }
 
-const SCORES = new Map(
-  Object.entries({ harnessPath: 0.2, pathExisted: 0.3, outsideService: 0.05, sameCause: 0.1 }),
-);
+const SCORES = new Map(Object.entries({ harnessPath: 0.2, outsideService: 0.05, sameCause: 0.1 }));
 
 const decodeAddress = Schema.decodeUnknownOption(Schema.Struct({ port: Schema.Number }));
 
@@ -201,26 +199,25 @@ describe("pi-feedback in a real Pi over RPC", () => {
     "records, attributes and classifies a session's friction",
     async () => {
       await client.promptAndWait("Go", undefined, TIMEOUT);
-      const events = await ledgerUntil(ledger, (read) => ofType(read, "verdict").length >= 2);
+      const events = await ledgerUntil(ledger, (read) => ofType(read, "verdict").length >= 1);
 
       expect(ofType(events, "signal")).toMatchObject([
         { tool: "read", owner: "unattributed", cause: "parallel-batch" },
-        { tool: "read", owner: "unattributed", evidence: "pi-path" },
+        { tool: "read", owner: "unattributed", evidence: "pi-path", pathExisted: false },
       ]);
       expect(ofType(events, "report")).toMatchObject([
         { owner: "pi-claude", component: "pi-claude", kind: "workaround" },
       ]);
       const verdicts = ofType(events, "verdict");
-      expect(verdicts.map((verdict) => verdict.model)).toStrictEqual([JEV_MODEL, JEV_MODEL]);
+      expect(verdicts.map((verdict) => verdict.model)).toStrictEqual([JEV_MODEL]);
       expect(verdicts).toMatchObject([
-        { fingerprint: "pi-claude/workaround", harnessPath: 0.2 },
-        { pathExisted: 0.3, outsideService: 0.05 },
+        { fingerprint: "pi-claude/workaround", harnessPath: 0.2, outsideService: 0.05 },
       ]);
       expect(ofType(events, "same_cause")).toStrictEqual([]);
 
-      expect(requests.map((request) => request.model)).toStrictEqual([JEV_MODEL_ID, JEV_MODEL_ID]);
+      expect(requests.map((request) => request.model)).toStrictEqual([JEV_MODEL_ID]);
       expect(requests.flatMap((request) => Object.values(request.questions))).toMatchObject(
-        Array.from({ length: 6 }, () => ({ type: "noul" })),
+        Array.from({ length: 2 }, () => ({ type: "noul" })),
       );
 
       const { entries } = await client.getEntries();

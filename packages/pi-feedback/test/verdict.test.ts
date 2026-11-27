@@ -12,14 +12,17 @@ const verdict: VerdictEvent = {
   fingerprint: "bash: ls: unrecognized option",
   model: "typesafe/jev-1.14.0",
   harnessPath: 0.9,
-  pathExisted: 0.9,
   outsideService: 0.02,
 };
 
-type RecordOptions = { readonly piPath?: boolean; readonly batchOrdered?: boolean };
+type RecordOptions = {
+  readonly piPath?: boolean;
+  readonly existed?: boolean;
+  readonly batchOrdered?: boolean;
+};
 
 function record(session: string, options: RecordOptions = {}): RecordEvent {
-  const { piPath = true, batchOrdered = false } = options;
+  const { piPath = true, existed = true, batchOrdered = false } = options;
 
   type Signal = Extract<RecordEvent, { type: "signal" }>;
 
@@ -36,6 +39,7 @@ function record(session: string, options: RecordOptions = {}): RecordEvent {
 
   if (piPath) {
     event.evidence = "pi-path";
+    event.pathExisted = existed;
   }
 
   if (batchOrdered) {
@@ -70,7 +74,7 @@ describe("isPiCore", () => {
       "a low harness-path score",
       { verdicts: [{ ...verdict, harnessPath: THRESHOLDS.harnessPath - 0.01 }] },
     ],
-    ["a low path-existed score", { verdicts: [{ ...verdict, pathExisted: 0.5 }] }],
+    ["a Pi path that did not exist", { live: [record("a"), record("b", { existed: false })] }],
     [
       "an outside service",
       { verdicts: [{ ...verdict, outsideService: THRESHOLDS.piCoreOutsideBelow }] },

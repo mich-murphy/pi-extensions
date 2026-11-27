@@ -5,6 +5,8 @@ export const PI_CORE = "pi-core";
 
 const CLAUDE = "pi-claude";
 const CLAUDE_SCRATCH = /\/(?:private\/)?tmp\/claude-\d+\//u;
+const PATH_END = /[\s'"`(),;]/u;
+const TRAILING_PUNCTUATION = /[.:]+$/u;
 
 export type ToolSource = {
   readonly name: string;
@@ -29,7 +31,11 @@ export type OwnerSettings = {
   readonly home: string;
 };
 
-export type Attribution = { readonly owner: string; readonly evidence?: "pi-path" };
+export type Attribution = {
+  readonly owner: string;
+  readonly evidence?: "pi-path";
+  readonly pathExisted?: boolean;
+};
 
 export function escapeRegExp(text: string): string {
   return text.replaceAll(/[$()*+.?[\\\]^{|}]/gu, String.raw`\$&`);
@@ -38,7 +44,8 @@ export function escapeRegExp(text: string): string {
 export function createAttribution(sources: OwnerSources, settings: OwnerSettings) {
   const own: ReadonlySet<string> = new Set(settings.ownPackages);
   const encodedHome = escapeRegExp(settings.home.replace(/^\//u, "").replaceAll("/", "-"));
-  const piSessionName = new RegExp(`--${encodedHome}(?:-[^\\s'"\`/]*)?--`, "u");
+  const sessionName = `--${encodedHome}(?:-[^\\s'"\`/]*)?--`;
+  const piSessionNames = new RegExp(sessionName, "gu");
   const claudeProjectName = new RegExp(`(?<![\\w-])-${encodedHome}`, "u");
   const sessionsDir = join(settings.agentDir, "sessions");
 
@@ -60,8 +67,28 @@ export function createAttribution(sources: OwnerSources, settings: OwnerSettings
   const claudePath = (text: string): boolean =>
     own.has(CLAUDE) && (CLAUDE_SCRATCH.test(text) || claudeProjectName.test(text));
 
-  const piPath = (text: string): boolean =>
-    sessionsDirs.some((dir) => text.includes(dir)) || piSessionName.test(text);
+  const piPathsIn = (text: string): ReadonlyArray<string> => {
+    const underSessions = sessionsDirs.flatMap((dir) =>
+      text
+        .split(dir)
+        .slice(1)
+        .map((rest) => {
+          const [named = ""] = rest.split(PATH_END);
+
+          return join(sessionsDir, named.replace(TRAILING_PUNCTUATION, ""));
+        }),
+    );
+
+    const sessionNames = [...text.matchAll(piSessionNames)].map(([name]) =>
+      join(sessionsDir, name),
+    );
+
+    return [...new Set([...underSessions, ...sessionNames])].filter((path) => {
+      const inside = relative(sessionsDir, path);
+
+      return !inside.startsWith("..") && !isAbsolute(inside);
+    });
+  };
 
   const toolNamed = (name: string): ToolSource | undefined =>
     sources.getAllTools().find((tool) => tool.name === name);
@@ -77,7 +104,7 @@ export function createAttribution(sources: OwnerSources, settings: OwnerSettings
       return { owner: CLAUDE };
     }
 
-    return tool?.sourceInfo.source === "builtin" && piPath(text)
+    return tool?.sourceInfo.source === "builtin" && piPathsIn(text).length > 0
       ? { owner: UNATTRIBUTED, evidence: "pi-path" }
       : { owner: UNATTRIBUTED };
   };
@@ -109,5 +136,5 @@ export function createAttribution(sources: OwnerSources, settings: OwnerSettings
       : { owner: commandOwner };
   };
 
-  return { forSignal, forReport, toolNamed };
+  return { forSignal, forReport, toolNamed, piPathsIn };
 }
