@@ -81,7 +81,15 @@ fn arbitrary_header_never_accepts_out_of_range(tc: hegel::TestCase) {
 #[hegel::test(support::property_settings(200, 23456))]
 fn reservation_sequences_preserve_atomic_accounting(tc: hegel::TestCase) {
     use hegel::generators as gs;
-    let sizes = tc.draw(gs::vecs(gs::integers::<u16>()).max_size(64));
+    // Small sizes alone rarely reach the 224 KiB data share; a weighted branch of large
+    // reservations makes saturation (and the exact-fit edge) common without excluding any size.
+    let sizes = tc.draw(
+        gs::vecs(hegel::one_of!(
+            gs::integers::<u16>(),
+            gs::integers::<u16>().min_value(16 * 1024),
+        ))
+        .max_size(64),
+    );
     let mut buffers = Buffers::new();
     let connection = ConnectionId(1);
     buffers
