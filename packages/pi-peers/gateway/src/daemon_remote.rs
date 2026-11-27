@@ -17,6 +17,7 @@ use crate::budget::{BufferClass, ConnectionId, ConnectionKind};
 use crate::caps::Verb;
 use crate::config::Permission;
 use crate::remote::Authenticated;
+use crate::replies::{Answer, Full};
 use crate::tailscale::{Failure, Peer};
 use crate::transport::{self, Charge, Event, SourceEpoch};
 
@@ -97,6 +98,110 @@ impl Daemon {
             .get(&id)
             .and_then(|client| client.remote.as_ref())
             .is_some_and(|remote| remote.peer.caps.allows(scope, verb))
+    }
+    /// Whether a frame from remote `id` may reach a local session in `scope`: anything under
+    /// `push`; under `reply` only a `reply`, or an `update` with `replyTo`, answering a message
+    /// a local session sent that remote on this link. An admitted answer is counted at once.
+    pub(super) fn remote_admits(&mut self, id: ConnectionId, request: &Value, scope: &str) -> bool {
+        if self.remote_allows(id, scope, Verb::Push) {
+            return true;
+        }
+        let message = &request["message"];
+        let answer = match (message["kind"].as_str(), message.get("replyTo")) {
+            (Some("reply"), Some(_)) => Answer::Reply,
+            (Some("update"), Some(_)) => Answer::Update,
+            _ => return false,
+        };
+        if !self.remote_allows(id, scope, Verb::Reply)
+            || message["replyTo"]["sender"] != request["to"]
+        {
+            return false;
+        }
+        let Some(message_id) = message["replyTo"]["messageId"].as_str() else {
+            return false;
+        };
+        self.clients
+            .get_mut(&id)
+            .and_then(|client| client.remote.as_mut())
+            .is_some_and(|remote| {
+                remote.replies.answer(
+                    &request["from"],
+                    &request["to"],
+                    scope,
+                    message_id,
+                    answer,
+                    Instant::now(),
+                )
+            })
+    }
+    /// Records a local `sender`'s message to the remote `id`; whether a new entry was made.
+    pub(super) fn record_sent(
+        &mut self,
+        id: ConnectionId,
+        sender: &Value,
+        request: &Value,
+    ) -> Result<bool, Full> {
+        let Some(remote) = self
+            .clients
+            .get_mut(&id)
+            .and_then(|client| client.remote.as_mut())
+        else {
+            return Err(Full);
+        };
+        let result = remote.replies.sent(
+            sender,
+            &request["to"],
+            request["scopeId"].as_str().unwrap_or(""),
+            request["message"]["id"].as_str().unwrap_or(""),
+            Instant::now(),
+        );
+        if result.is_err() {
+            let stable_id = remote.peer.stable_id.clone();
+            self.events.emit(
+                &format!("reply_table_full:{stable_id}"),
+                json!({"event":"reply_table_full","stableId":stable_id,"entries":crate::replies::MAX_ENTRIES}),
+            );
+        }
+        result
+    }
+    /// Records a forward to a remote destination; `None` after refusing it as overloaded.
+    pub(super) fn record_for(
+        &mut self,
+        origin: ConnectionId,
+        destination: ConnectionId,
+        sender: &Value,
+        request: &Value,
+    ) -> Option<bool> {
+        if !self.is_remote(destination) {
+            return Some(false);
+        }
+        if let Ok(recorded) = self.record_sent(destination, sender, request) {
+            Some(recorded)
+        } else {
+            self.reject(origin, request, "overloaded", Some("receipts"));
+            None
+        }
+    }
+    pub(super) fn unrecord_sent(&mut self, id: ConnectionId, sender: &Value, request: &Value) {
+        if let Some(remote) = self
+            .clients
+            .get_mut(&id)
+            .and_then(|client| client.remote.as_mut())
+        {
+            remote.replies.unsent(
+                sender,
+                &request["to"],
+                request["scopeId"].as_str().unwrap_or(""),
+                request["message"]["id"].as_str().unwrap_or(""),
+            );
+        }
+    }
+    /// The registered peer of local connection `id`, or null.
+    pub(super) fn descriptor_peer(&self, id: ConnectionId) -> Value {
+        self.clients
+            .get(&id)
+            .and_then(|client| client.descriptor.as_ref())
+            .map_or(Value::Null, |descriptor| descriptor["peer"].clone())
     }
     /// Takes one result of the link driver: an identified stream becomes the active remote
     /// unless one already is; a refusal only names the peer for link state.
@@ -194,6 +299,7 @@ impl Daemon {
                     ping: None,
                     peer,
                     refresh: Refresh::new(Instant::now()),
+                    replies: crate::replies::Replies::default(),
                     refs: crate::intern::Refs::default(),
                 }),
                 closing: false,

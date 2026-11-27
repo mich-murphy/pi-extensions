@@ -14,7 +14,6 @@ use tokio::net::{UnixListener, UnixStream};
 
 use crate::breaker::LinkView;
 use crate::budget::{BufferClass, ConnectionId, ConnectionKind};
-use crate::caps::Verb;
 use crate::config::{Config, Permission};
 use crate::events::Events;
 use crate::link::{Driver, Step};
@@ -66,6 +65,8 @@ struct Remote {
     /// Who tailscaled says the peer is and what it may do here; its `StableID` is pinned.
     peer: crate::tailscale::Peer,
     refresh: Refresh,
+    /// Local messages sent to this remote that it may answer under `reply`.
+    replies: crate::replies::Replies,
     /// Interning tables of this link generation; a new link starts empty.
     refs: crate::intern::Refs,
 }
@@ -833,10 +834,10 @@ impl Daemon {
         let remote_origin = self.is_remote(origin);
         let authorized = if remote_origin {
             machine == self.config.machine_id
-                && self.remote_allows(origin, scope, Verb::Push)
                 && self
                     .remote_descriptor(origin, &request["from"])
                     .is_some_and(|own| member(own, scope))
+                && self.remote_admits(origin, request, scope)
         } else {
             // Another machine's gateway decides what reaches its sessions.
             self.descriptor(origin)
@@ -939,6 +940,12 @@ impl Daemon {
             self.reject(origin, &request, "delivery_too_large", None);
             return;
         }
+        // Record what a `reply`-only remote may answer before the message can reach it.
+        let Some(recorded) = self.record_for(origin, destination, &forwarded["from"], &request)
+        else {
+            drop(reservation);
+            return;
+        };
         let sender_peer = if remote_origin {
             &request["from"]
         } else {
@@ -959,6 +966,9 @@ impl Daemon {
             remote.refs.compress(&mut forwarded);
         }
         if !self.queue_authorized(destination, &forwarded, BufferClass::Data, None, source) {
+            if recorded {
+                self.unrecord_sent(destination, &self.descriptor_peer(origin), &request);
+            }
             drop(reservation);
             self.reject(origin, &request, "overloaded", Some("buffers"));
             return;
@@ -1183,6 +1193,7 @@ fn current_uid() -> u32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::caps::Verb;
 
     #[tokio::test]
     async fn managed_runtime_without_loaded_file_fingerprint_refuses_guarded_registration() {
@@ -1332,6 +1343,7 @@ mod tests {
             scopes: vec!["team".to_owned()],
             peer: crate::tailscale::tests_support::peer("beta", &serde_json::json!([])),
             refresh: Refresh::new(Instant::now()),
+            replies: crate::replies::Replies::default(),
             refs: crate::intern::Refs::default(),
         });
         tokio::time::advance(Duration::from_secs(29)).await;
@@ -1425,6 +1437,7 @@ mod tests {
             scopes: vec!["team".to_owned()],
             peer: crate::tailscale::tests_support::peer("beta", caps),
             refresh: Refresh::new(Instant::now()),
+            replies: crate::replies::Replies::default(),
             refs: crate::intern::Refs::default(),
         });
         (daemon, directory, peer, tasks)
@@ -1487,6 +1500,55 @@ mod tests {
             drop(tasks);
             std::fs::remove_dir_all(directory).expect("cleanup");
         }
+    }
+
+    #[tokio::test]
+    async fn reply_only_remotes_answer_only_recorded_local_messages_once() {
+        let caps = json!([{"scopes":["team"],"allow":["reply"]}]);
+        let (mut daemon, directory, _stream, tasks) = linked_fixture("replies", &caps);
+        let id = ConnectionId(1);
+        assert!(daemon.remote_allows(id, "team", Verb::Reply));
+        assert!(!daemon.remote_allows(id, "team", Verb::Push));
+        let local = json!({"machineId":"alpha","sessionId":"me","runtimeNonce":"00000000000000000000000000000001"});
+        let remote = json!({"machineId":"beta","sessionId":"you","runtimeNonce":"00000000000000000000000000000002"});
+        let sent = json!({"v":2,"op":"send","rid":"00000000000000000000000000000003","to":remote,"scopeId":"team","budgetMs":15000,"message":{"id":"0000000000000000000000000000000a","kind":"request","content":"q","format":"text"}});
+        let answer = |kind: &str, message_id: &str| json!({"v":2,"op":"send","rid":"00000000000000000000000000000004","from":remote,"to":local,"scopeId":"team","budgetMs":15000,"message":{"id":"0000000000000000000000000000000b","kind":kind,"content":"a","format":"text","replyTo":{"sender":local,"messageId":message_id}}});
+        let original = "0000000000000000000000000000000a";
+        assert!(
+            !daemon.remote_admits(id, &answer("reply", original), "team"),
+            "nothing was sent yet"
+        );
+        assert_eq!(daemon.record_sent(id, &local, &sent), Ok(true));
+        let mut request = answer("request", original);
+        request["message"]
+            .as_object_mut()
+            .expect("message")
+            .remove("replyTo");
+        assert!(
+            !daemon.remote_admits(id, &request, "team"),
+            "request is never admitted under reply"
+        );
+        assert!(
+            !daemon.remote_admits(
+                id,
+                &answer("reply", "0000000000000000000000000000000c"),
+                "team"
+            ),
+            "forged message id"
+        );
+        assert!(
+            !daemon.remote_admits(id, &answer("reply", original), "other"),
+            "other scope"
+        );
+        assert!(daemon.remote_admits(id, &answer("update", original), "team"));
+        assert!(daemon.remote_admits(id, &answer("reply", original), "team"));
+        assert!(
+            !daemon.remote_admits(id, &answer("reply", original), "team"),
+            "replayed reply"
+        );
+        drop(daemon);
+        drop(tasks);
+        std::fs::remove_dir_all(directory).expect("cleanup");
     }
 
     #[tokio::test(start_paused = true)]
