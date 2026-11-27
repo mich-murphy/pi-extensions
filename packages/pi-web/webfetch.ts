@@ -228,17 +228,17 @@ export function createWebFetchTool(composition: WebFetchToolComposition) {
     renderResult(
       result: {
         readonly content: ReadonlyArray<{ readonly type: string; readonly text?: string }>;
-        readonly details?: WebFetchDetails;
-        readonly isError?: boolean;
+        readonly details?: WebFetchDetails | undefined;
       },
       options: { readonly expanded: boolean; readonly isPartial: boolean },
       theme: RenderTheme,
+      context: { readonly isError: boolean },
     ) {
       if (options.isPartial) {
         return new Text(theme.fg("warning", "Fetching..."), 0, 0);
       }
 
-      if (result.isError === true) {
+      if (context.isError) {
         return new Text(
           theme.fg(
             "error",
