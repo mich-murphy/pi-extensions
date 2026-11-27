@@ -9,7 +9,7 @@ import type { CliIo } from "../commands.ts";
 import { groupId } from "../fingerprint.ts";
 import { ledgerPath, readLedger } from "../ledger.ts";
 import type { LedgerEvent } from "../ledger.ts";
-import { signal, verdictEvent } from "./events.ts";
+import { signal } from "./events.ts";
 
 const execFileAsync = promisify(execFile);
 const CLI = new URL("../cli.ts", import.meta.url).pathname;
@@ -64,7 +64,6 @@ describe("pi-feedback commands", () => {
     write(io.ledger, [
       signal({ n: 3, session: "a", owner: "unattributed", fingerprint, ...piPath }),
       signal({ n: 4, session: "b", owner: "unattributed", fingerprint, ...piPath }),
-      verdictEvent(5, fingerprint, { harnessPath: 0.9, outsideService: 0.02 }),
     ]);
     await run("queue");
     expect(io.stdout).toContain(

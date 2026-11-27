@@ -24,6 +24,7 @@ export type SignalOptions = {
   readonly session: string;
   readonly owner?: string;
   readonly fingerprint?: string;
+  readonly tool?: string;
   readonly error?: string;
   readonly evidence?: "pi-path";
   readonly pathExisted?: boolean;
@@ -35,6 +36,7 @@ export function signal({
   session,
   owner = "pi-claude",
   fingerprint = "read: ENOENT",
+  tool = "read",
   error = "ENOENT: no such file",
   evidence,
   pathExisted,
@@ -49,7 +51,7 @@ export function signal({
     session,
     owner,
     fingerprint,
-    tool: "read",
+    tool,
     error,
   };
 
@@ -139,4 +141,30 @@ export function ownerEvent(
     model: "typesafe/jev-1.14.0",
     probability,
   };
+}
+
+export function sameCauseEvent(
+  n: number,
+  owner: string,
+  pair: readonly [string, string],
+  sameCause: number,
+): LedgerEvent {
+  return {
+    type: "same_cause",
+    id: eventId(n),
+    at: eventAt(n),
+    owner,
+    a: pair[0],
+    b: pair[1],
+    model: "typesafe/jev-1.14.0",
+    sameCause,
+  };
+}
+
+const CLASSIFIER_TYPES: ReadonlySet<string> = new Set(["verdict", "owner", "same_cause"]);
+
+export function withoutClassifierEvents(
+  events: ReadonlyArray<LedgerEvent>,
+): ReadonlyArray<LedgerEvent> {
+  return events.filter((event) => !CLASSIFIER_TYPES.has(event.type));
 }

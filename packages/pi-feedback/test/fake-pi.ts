@@ -6,7 +6,6 @@ import type {
 } from "@earendil-works/pi-coding-agent";
 import type { Component } from "@earendil-works/pi-tui";
 import type { BatchCall } from "../batch.ts";
-import type { ClassifierRegistry } from "../classify.ts";
 import type {
   FeedbackCommandContext,
   FeedbackContext,
@@ -15,7 +14,6 @@ import type {
   FeedbackTool,
   NoteRenderer,
 } from "../feedback.ts";
-import { noClassifier } from "./fake-classifier.ts";
 
 type Command = Parameters<FeedbackRegistration["registerCommand"]>[1];
 
@@ -45,11 +43,7 @@ function renderText(component: Component | undefined): string {
     .trim();
 }
 
-export function fakePi(
-  packagesDir: string,
-  agentDir = "/home/u/.pi/agent",
-  modelRegistry: ClassifierRegistry = noClassifier,
-) {
+export function fakePi(packagesDir: string, agentDir = "/home/u/.pi/agent") {
   const tools: Array<FeedbackTool> = [];
   const renderers = new Map<string, NoteRenderer>();
   const commands = new Map<string, Command>();
@@ -117,7 +111,6 @@ export function fakePi(
   const ctx = (): FeedbackContext => ({
     sessionManager: { getSessionId: () => session },
     model: { provider: "claude", id: "claude-opus-5-5" },
-    modelRegistry,
   });
 
   const commandCtx: FeedbackCommandContext = {

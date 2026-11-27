@@ -1,6 +1,5 @@
 import { lstat } from "node:fs/promises";
 import { StringEnum } from "@earendil-works/pi-ai";
-import type { JsonObject } from "@earendil-works/pi-ai";
 import type {
   AgentToolUpdateCallback,
   EntryRenderOptions,
@@ -20,11 +19,9 @@ import { onOffCommand } from "../shared/on-off-command.ts";
 import type { OnOffCommand } from "../shared/on-off-command.ts";
 import { isParallelBatch, isReadOnlyTool } from "./batch.ts";
 import type { BatchCall } from "./batch.ts";
-import { ClassifyOutcome, classifyRecord } from "./classify.ts";
-import type { ClassifierRegistry } from "./classify.ts";
 import { groupId, reportFingerprint, signalFingerprint } from "./fingerprint.ts";
 import { appendEvent, IMPACTS, KINDS } from "./ledger.ts";
-import type { Clock, EventDraft, LedgerEvent, RecordEvent } from "./ledger.ts";
+import type { Clock, EventDraft, RecordEvent } from "./ledger.ts";
 import { createNestedTracker } from "./nested.ts";
 import { FEEDBACK_OUTPUT } from "./output.ts";
 import { createAttribution } from "./owner.ts";
@@ -74,7 +71,6 @@ export type FeedbackResult = {
 export type FeedbackContext = {
   readonly sessionManager: Pick<ExtensionContext["sessionManager"], "getSessionId">;
   readonly model: Pick<NonNullable<ExtensionContext["model"]>, "provider" | "id"> | undefined;
-  readonly modelRegistry: ClassifierRegistry;
 };
 
 export type FeedbackCommandContext = {
@@ -143,20 +139,7 @@ export type FeedbackDependencies = {
   readonly home: string;
   readonly piVersion: string;
   readonly clock?: Clock;
-  readonly schedule?: (task: () => Promise<void>) => void;
 };
-
-function serialQueue(): (task: () => Promise<void>) => void {
-  let tail: Promise<void> = Promise.resolve();
-
-  return (task) => {
-    tail = tail.then(task, task);
-  };
-}
-
-function isRecordEvent(event: LedgerEvent): event is RecordEvent {
-  return event.type === "report" || event.type === "signal";
-}
 
 const decodeNote = Schema.decodeUnknownOption(
   Schema.Struct({ group: Schema.String, owner: Schema.String, summary: Schema.String }),
@@ -312,33 +295,6 @@ export function registerFeedback(
   dependencies: FeedbackDependencies,
 ): void {
   const { ledger, piVersion, clock } = dependencies;
-  const schedule = dependencies.schedule ?? serialQueue();
-  let unclassified = 0;
-
-  const classifyLater = (ctx: FeedbackContext, event: LedgerEvent, input?: JsonObject): void => {
-    if (!isRecordEvent(event)) {
-      return;
-    }
-
-    const registry = ctx.modelRegistry;
-    schedule(async () => {
-      try {
-        const outcome = await classifyRecord({
-          registry,
-          ledger,
-          record: event,
-          input,
-          clock,
-          ownPackages: dependencies.ownPackages,
-          home: dependencies.home,
-        });
-
-        unclassified += ClassifyOutcome.$is("classified")(outcome) ? outcome.failed : 0;
-      } catch {
-        unclassified += 1;
-      }
-    });
-  };
 
   const owners = createAttribution(pi, dependencies);
   const readOnly = (name: string): boolean => isReadOnlyTool(owners.toolNamed(name));
@@ -380,7 +336,6 @@ export function registerFeedback(
         clock,
       );
 
-      classifyLater(ctx, event);
       const group = groupId(owner, fingerprint);
       pi.appendEntry(FEEDBACK_NOTE_TYPE, {
         group,
@@ -460,13 +415,11 @@ export function registerFeedback(
     const attribution = await withPathFact(named, owners.piPathsIn(error));
 
     try {
-      const recorded = await appendEvent(
+      await appendEvent(
         ledger,
         signalDraft(ctx, piVersion, attribution, { tool: event.toolName, error, ordered }),
         clock,
       );
-
-      classifyLater(ctx, recorded, failing?.args);
     } catch {
       unwritten += 1;
     }
@@ -485,7 +438,7 @@ export function registerFeedback(
         pi.setActiveTools(next ? [...active, FEEDBACK_TOOL] : active);
       },
       note: () =>
-        ` Ledger: ${ledger}.${unwritten > 0 ? ` ${unwritten} tool errors could not be written to it.` : ""}${unclassified > 0 ? ` ${unclassified} classifier calls failed.` : ""}`,
+        ` Ledger: ${ledger}.${unwritten > 0 ? ` ${unwritten} tool errors could not be written to it.` : ""}`,
     }),
   );
 }

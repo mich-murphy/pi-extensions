@@ -1,34 +1,40 @@
-import { THRESHOLDS } from "./jev.ts";
-import type { RecordEvent, VerdictEvent } from "./ledger.ts";
+import type { RecordEvent } from "./ledger.ts";
 import { UNATTRIBUTED } from "./owner.ts";
 
 const PI_CORE_MIN_SESSIONS = 2;
+
+const NETWORK_TOOLS: ReadonlySet<string> = new Set(["webfetch", "websearch"]);
+
+const OUTSIDE_FAILURE =
+  /Request failed \(\d{3}\b|Connection (?:refused|reset) by|Could not resolve host|TLS certificate error for|timed out|rate.?limit|too many requests|HTTP 5\d{2}\b|\b429\b|ECONNREFUSED|ENOTFOUND|ETIMEDOUT|EAI_AGAIN/iu;
+
+const ALL_PROVIDERS_FAILED = /^All search providers failed \((?<attempts>.*)\)\.?$/su;
 
 export type PiCoreCandidate = {
   readonly owner: string;
   readonly live: ReadonlyArray<RecordEvent>;
   readonly excluded: ReadonlyArray<RecordEvent>;
   readonly sessions: number;
-  readonly verdicts: ReadonlyArray<VerdictEvent | undefined>;
 };
 
 function isBatchOrdered(record: RecordEvent): boolean {
   return record.type === "signal" && record.cause === "parallel-batch";
 }
 
-export function isExcluded(record: RecordEvent, verdict: VerdictEvent | undefined): boolean {
-  return (
-    isBatchOrdered(record) ||
-    (verdict !== undefined && verdict.outsideService >= THRESHOLDS.excludedOutsideFrom)
-  );
+function isOutsideText(text: string): boolean {
+  const attempts = ALL_PROVIDERS_FAILED.exec(text.trim())?.groups?.attempts;
+
+  return attempts === undefined
+    ? OUTSIDE_FAILURE.test(text)
+    : attempts.split("; ").every((attempt) => OUTSIDE_FAILURE.test(attempt));
 }
 
-function verdictPasses(verdict: VerdictEvent | undefined): boolean {
-  return (
-    verdict !== undefined &&
-    verdict.harnessPath >= THRESHOLDS.harnessPath &&
-    verdict.outsideService < THRESHOLDS.piCoreOutsideBelow
-  );
+export function isOutsideService(record: RecordEvent): boolean {
+  return record.type === "signal" && NETWORK_TOOLS.has(record.tool) && isOutsideText(record.error);
+}
+
+export function isExcluded(record: RecordEvent): boolean {
+  return isBatchOrdered(record) || isOutsideService(record);
 }
 
 export function isPiCore(candidate: PiCoreCandidate): boolean {
@@ -38,9 +44,7 @@ export function isPiCore(candidate: PiCoreCandidate): boolean {
     candidate.owner === UNATTRIBUTED &&
     live.length > 0 &&
     live.every((record) => record.evidence === "pi-path" && record.pathExisted === true) &&
-    ![...live, ...excluded].some((record) => isBatchOrdered(record)) &&
-    candidate.sessions >= PI_CORE_MIN_SESSIONS &&
-    candidate.verdicts.length > 0 &&
-    candidate.verdicts.every((verdict) => verdictPasses(verdict))
+    ![...live, ...excluded].some((record) => isExcluded(record)) &&
+    candidate.sessions >= PI_CORE_MIN_SESSIONS
   );
 }
