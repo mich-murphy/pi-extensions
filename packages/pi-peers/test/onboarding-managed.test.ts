@@ -82,8 +82,13 @@ describe("managed startup remains demand-owned across readonly version/filesyste
       "Remote config snapshot: future-state (new-reason).",
     ],
     [
-      { state: "configured", trust: "pinned", publicKey: "c".repeat(64) },
-      "Remote config snapshot: configured (trust pinned).",
+      {
+        state: "configured",
+        trust: "tailscale",
+        endpoint: { mode: "listen", address: "100.64.0.1:7443" },
+        self: { name: "laptop", stableId: "n1", addresses: ["100.64.0.1"] },
+      },
+      "Remote config snapshot: configured (trust tailscale).",
     ],
   ])("shows a newer or unknown diagnostic state %j instead of failing", async (remote, text) => {
     const agent = join(fixture.root, "agent");
