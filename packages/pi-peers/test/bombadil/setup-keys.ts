@@ -152,17 +152,32 @@ function towardConsent(
 ): Array<ActionTemplate> {
   const target = readyConsent(rows);
 
-  if (target === undefined) {
-    return rows.some((row) => CONSENT_ROWS.has(row.label)) ? [] : [key(UP)];
+  if (target !== undefined) {
+    return [stepToward(rows, selected, target)];
   }
 
+  if (rows.some((row) => row.label === MODE && row.value === REMOTE_MODE)) {
+    return [stepToward(rows, selected, MODE)];
+  }
+
+  return rows.some((row) => CONSENT_ROWS.has(row.label)) ? [] : [key(UP)];
+}
+
+const MODE = "Mode";
+const REMOTE_MODE = "One remote peer";
+
+function stepToward(
+  rows: ReadonlyArray<ListRow>,
+  selected: string | null,
+  target: string,
+): ActionTemplate {
   if (selected === target) {
-    return [key(ENTER)];
+    return key(ENTER);
   }
 
   const labels = rows.map((row) => row.label);
 
-  return [key(labels.indexOf(target) < labels.indexOf(selected ?? "") ? UP : DOWN)];
+  return key(labels.indexOf(target) < labels.indexOf(selected ?? "") ? UP : DOWN);
 }
 
 export const piKeepsRunning: Formula = always(() => exitStatus.current === null);
