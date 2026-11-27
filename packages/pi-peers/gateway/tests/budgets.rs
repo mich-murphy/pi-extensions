@@ -68,7 +68,17 @@ fn aggregate_is_not_thirty_reserved_entitlements() {
 #[hegel::test(support::property_settings(200, 12345))]
 fn arbitrary_header_never_accepts_out_of_range(tc: hegel::TestCase) {
     use hegel::generators as gs;
-    let bytes = tc.draw(gs::vecs(gs::integers::<u8>()).max_size(64));
+    use hegel::generators::Generator as _;
+    // Arbitrary byte vectors are rarely exactly four bytes long, so a weighted branch also draws
+    // four-byte headers, with the edges of the accepted range among them.
+    let bytes = tc.draw(hegel::one_of!(
+        gs::vecs(gs::integers::<u8>()).max_size(64),
+        hegel::one_of!(
+            gs::sampled_from(vec![0_u32, 1, 32_763, 32_764, 32_765, u32::MAX]),
+            gs::integers::<u32>(),
+        )
+        .map(|declared| declared.to_be_bytes().to_vec()),
+    ));
     if let Ok(header) = <[u8; 4]>::try_from(bytes.as_slice()) {
         let declared = u32::from_be_bytes(header);
         assert_eq!(
