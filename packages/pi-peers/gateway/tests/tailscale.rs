@@ -610,10 +610,32 @@ mod linked {
         drop(beta);
     }
 
-    #[test]
-    fn a_reply_only_remote_without_discover_answers_what_was_sent_to_it_once() {
-        // alpha may discover and push to beta's sessions; beta holds only `reply` on team toward
-        // alpha, so it never receives alpha's sessions in a roster.
+    /// Two linked gateways where alpha may discover and push to beta's sessions, and beta holds
+    /// only `reply` on team toward alpha, so it never receives alpha's sessions in a roster.
+    /// One request from alpha's session has been admitted at beta's session.
+    struct ReplyOnly {
+        beta: Gateway,
+        alpha: Gateway,
+        a: UnixStream,
+        b: UnixStream,
+        other: UnixStream,
+        alpha_peer: Value,
+        beta_peer: Value,
+        original: String,
+    }
+
+    fn reply_answer(kind: &str, n: u32, sender: &Value, to: &str) -> Value {
+        json!({"id":rid(n),"kind":kind,"content":"answer","format":"text","replyTo":{"sender":sender,"messageId":to}})
+    }
+
+    fn send_in(stream: &mut UnixStream, to: &Value, n: u32, scope: &str, message: &Value) {
+        write(
+            stream,
+            &json!({"v":2,"op":"send","rid":rid(n),"to":to,"scopeId":scope,"budgetMs":15000,"message":message}),
+        );
+    }
+
+    fn reply_only_link() -> ReplyOnly {
         let beta = beta(
             Some(&json!([{"scopes":["team","private"],"allow":["discover","push"]}])),
             &[],
@@ -648,14 +670,13 @@ mod linked {
             "beta never sees alpha's sessions: {snapshot}"
         );
         let original = rid(1020);
-        let answer = |kind: &str, n: u32, to: &str| json!({"id":rid(n),"kind":kind,"content":"answer","format":"text","replyTo":{"sender":alpha_peer,"messageId":to}});
-        let send_in = |stream: &mut UnixStream, n: u32, scope: &str, message: &Value| {
-            write(
-                stream,
-                &json!({"v":2,"op":"send","rid":rid(n),"to":alpha_peer,"scopeId":scope,"budgetMs":15000,"message":message}),
-            );
-        };
-        send_in(&mut b, 10, "team", &answer("reply", 10, &original));
+        send_in(
+            &mut b,
+            &alpha_peer,
+            10,
+            "team",
+            &reply_answer("reply", 10, &alpha_peer, &original),
+        );
         assert_eq!(
             read(&mut b)["outcome"]["code"],
             "forbidden",
@@ -663,69 +684,94 @@ mod linked {
         );
         send(&mut a, &beta_peer, 20, &request(20));
         let delivery = read(&mut b);
-        assert_eq!(delivery["message"]["id"], original);
-        assert_eq!(delivery["from"], alpha_peer);
-        write(&mut b, &receipt(&delivery, "none"));
-        assert_eq!(read(&mut a)["outcome"]["tag"], "admitted");
-        for (forger, n, scope, message, case) in [
-            (
-                false,
-                11,
-                "team",
-                answer("reply", 11, &rid(1021)),
-                "unknown messageId",
-            ),
-            (
-                true,
-                12,
-                "team",
-                answer("reply", 12, &original),
-                "wrong from",
-            ),
-            (
-                false,
-                13,
-                "private",
-                answer("reply", 13, &original),
-                "wrong scope",
-            ),
-        ] {
-            let stream = if forger { &mut other } else { &mut b };
-            send_in(stream, n, scope, &message);
-            assert_eq!(read(stream)["outcome"]["code"], "forbidden", "{case}");
-        }
-        for (n, kind) in [(14, "update"), (15, "reply")] {
-            send_in(&mut b, n, "team", &answer(kind, n, &original));
-            let delivered = read(&mut a);
-            assert_eq!(delivered["message"]["kind"], kind);
-            assert_eq!(delivered["from"], beta_peer);
-            write(&mut a, &receipt(&delivered, "verified"));
-            assert_eq!(read(&mut b)["outcome"]["tag"], "admitted", "{kind}");
-        }
-        send_in(&mut b, 16, "team", &answer("reply", 16, &original));
         assert_eq!(
-            read(&mut b)["outcome"]["code"],
+            delivery["message"]["id"], original,
+            "beta receives the original request"
+        );
+        assert_eq!(delivery["from"], alpha_peer, "from alpha's session");
+        write(&mut b, &receipt(&delivery, "none"));
+        assert_eq!(
+            read(&mut a)["outcome"]["tag"],
+            "admitted",
+            "the request is admitted"
+        );
+        ReplyOnly {
+            beta,
+            alpha,
+            a,
+            b,
+            other,
+            alpha_peer,
+            beta_peer,
+            original,
+        }
+    }
+
+    #[test]
+    fn a_reply_only_remote_without_discover_answers_what_was_sent_to_it_once() {
+        let mut link = reply_only_link();
+        let to = link.alpha_peer.clone();
+        for (n, kind) in [(14, "update"), (15, "reply")] {
+            let answer = reply_answer(kind, n, &to, &link.original);
+            send_in(&mut link.b, &to, n, "team", &answer);
+            let delivered = read(&mut link.a);
+            assert_eq!(delivered["message"]["kind"], kind);
+            assert_eq!(delivered["from"], link.beta_peer);
+            write(&mut link.a, &receipt(&delivered, "verified"));
+            assert_eq!(read(&mut link.b)["outcome"]["tag"], "admitted", "{kind}");
+        }
+        let second = reply_answer("reply", 16, &to, &link.original);
+        send_in(&mut link.b, &to, 16, "team", &second);
+        assert_eq!(
+            read(&mut link.b)["outcome"]["code"],
             "forbidden",
             "a second reply is refused"
         );
-        send_in(&mut b, 17, "team", &request(17));
+        assert!(
+            !link.alpha.stderr().contains("answer"),
+            "no content in audit"
+        );
+        drop(link.beta);
+    }
+
+    #[test]
+    fn a_reply_only_remote_cannot_forge_answers_or_send_requests() {
+        let mut link = reply_only_link();
+        let to = link.alpha_peer.clone();
+        let original = link.original.clone();
+        for (forger, n, scope, message, case) in [
+            (false, 11, "team", rid(1021), "unknown messageId"),
+            (true, 12, "team", original.clone(), "wrong from"),
+            (false, 13, "private", original.clone(), "wrong scope"),
+        ] {
+            let stream = if forger { &mut link.other } else { &mut link.b };
+            send_in(
+                stream,
+                &to,
+                n,
+                scope,
+                &reply_answer("reply", n, &to, &message),
+            );
+            assert_eq!(read(stream)["outcome"]["code"], "forbidden", "{case}");
+        }
+        send_in(&mut link.b, &to, 17, "team", &request(17));
         assert_eq!(
-            read(&mut b)["outcome"]["code"],
+            read(&mut link.b)["outcome"]["code"],
             "no_route",
             "a request never leaves beta for a session it was not shown"
         );
-        let mut disguised = answer("reply", 18, &original);
+        let mut disguised = reply_answer("reply", 18, &to, &original);
         disguised["kind"] = json!("request");
-        send_in(&mut b, 18, "team", &disguised);
+        send_in(&mut link.b, &to, 18, "team", &disguised);
         assert_eq!(
-            read(&mut b)["outcome"]["code"],
+            read(&mut link.b)["outcome"]["code"],
             "forbidden",
             "alpha never admits a request under reply, even one carrying replyTo"
         );
-        let audit = alpha.stderr();
+        let audit = link.alpha.stderr();
         assert!(audit.contains("\"reason\":\"caps\""), "{audit}");
         assert!(!audit.contains("answer"), "no content in audit");
-        drop(beta);
+        drop(link.beta);
     }
 
     #[test]
