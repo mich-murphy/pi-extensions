@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Hegel } from "@hegeldev/hegel";
 import type { TestCase } from "@hegeldev/hegel";
 import {
@@ -21,7 +22,23 @@ import { assistantEntry, fakePi, userEntry } from "./fake-pi";
 const MINUTE = 60_000;
 const settings = propertySettings(200);
 
-type Step = { jump: number; event: "none" | "tree" | "shutdown" };
+type Mode = ExtensionContext["mode"];
+
+const MODES = ["tui", "rpc", "print", "json"] as const satisfies ReadonlyArray<Mode>;
+
+const SCHEDULING_MODES: ReadonlySet<Mode> = new Set(["tui", "rpc"]);
+
+const TRANSIENT_MESSAGES = [
+  "Connection error.",
+  "terminated",
+  "fetch failed",
+  "Our servers are currently overloaded. Please try again later.",
+  "OpenAI Responses stream ended before a terminal response event",
+  "Claude Code stopped with an error but did not say why.",
+  "Claude Code failed to start with an unexpected error.",
+] as const;
+
+type Step = { jump: number; event: "none" | "tree" | "shutdown"; error: string };
 
 type Plan = { delaysMinutes: Array<number>; maxAttempts: number; windowMinutes: number };
 
@@ -48,22 +65,19 @@ function expectedOutcomes(
   return out;
 }
 
-function setup(transient: Plan) {
-  const pi = fakePi("tui", { piRetry: { transient } });
+function setup(transient: Plan, mode: Mode) {
+  const pi = fakePi(mode, { piRetry: { transient } });
   registerRetry(pi.pi, pi.deps);
 
   return pi;
 }
 
-function failOnce(pi: ReturnType<typeof setup>, at: number): string {
+function failOnce(pi: ReturnType<typeof setup>, at: number, error: string): string {
   pi.advanceTo(at);
   const before = pi.notifications.length;
   pi.startRun();
 
-  const result = pi.settle("error", [
-    userEntry("u"),
-    assistantEntry("a", "error", "Connection error."),
-  ]);
+  const result = pi.settle("error", [userEntry("u"), assistantEntry("a", "error", error)]);
 
   assert.equal(pi.notifications.length, before + 1);
   const message = pi.notifications[before]?.message ?? "";
@@ -72,7 +86,28 @@ function failOnce(pi: ReturnType<typeof setup>, at: number): string {
   return message;
 }
 
-function assertSchedule(plan: Plan, steps: ReadonlyArray<Step>): void {
+function assertNeverSchedules(plan: Plan, mode: Mode, steps: ReadonlyArray<Step>): void {
+  const pi = setup(plan, mode);
+  let at = 0;
+
+  for (const { jump, error } of steps) {
+    at += jump * MINUTE;
+    pi.advanceTo(at);
+    pi.startRun();
+    assert.equal(
+      pi.settle("error", [userEntry("u"), assistantEntry("a", "error", error)]),
+      undefined,
+    );
+  }
+
+  assert.equal(pi.timerCount(), 0, `${mode} mode never schedules`);
+  assert.deepEqual(pi.notifications, []);
+  assert.deepEqual(pi.sent, []);
+  assert.deepEqual(pi.stderr, []);
+  assert.deepEqual(pi.appended, []);
+}
+
+function assertSchedule(plan: Plan, mode: Mode, steps: ReadonlyArray<Step>): void {
   const times: Array<number> = [];
   let at = 0;
 
@@ -81,7 +116,7 @@ function assertSchedule(plan: Plan, steps: ReadonlyArray<Step>): void {
     times.push(at);
   }
 
-  const pi = setup(plan);
+  const pi = setup(plan, mode);
 
   const expected = expectedOutcomes(
     plan,
@@ -100,7 +135,7 @@ function assertSchedule(plan: Plan, steps: ReadonlyArray<Step>): void {
       pi.shutdown();
     }
 
-    const message = failOnce(pi, when);
+    const message = failOnce(pi, when, steps[index]?.error ?? "");
     const want = expected[index];
     assert.ok(want);
 
@@ -231,25 +266,45 @@ function wrap<Fields extends RetrySettingsInput | TestFields | { transient: Test
   return copy;
 }
 
+function assertModeOutcome(plan: Plan, mode: Mode, steps: ReadonlyArray<Step>): void {
+  const check = SCHEDULING_MODES.has(mode) ? assertSchedule : assertNeverSchedules;
+  check(plan, mode, steps);
+}
+
+function assertEveryModeGenerated(seen: ReadonlySet<Mode>): void {
+  if ((settings.testCases ?? 0) < 50) {
+    return;
+  }
+
+  assert.deepEqual([...seen].toSorted(), [...MODES].toSorted(), "every mode is generated");
+}
+
 describe("transient backoff properties", () => {
-  test("schedule matches the independent model", () => {
+  test("schedule matches the independent model in every mode", () => {
+    const seenModes = new Set<Mode>();
+
     new Hegel((tc) => {
       const plan = drawPlan(tc);
+      const mode = tc.draw(sampledFrom(MODES));
+      seenModes.add(mode);
 
       const steps = tc.draw(
         arrays(
           record({
             jump: integers({ minValue: 0, maxValue: 20 }),
             event: sampledFrom(["none", "none", "none", "tree", "shutdown"] as const),
+            error: sampledFrom(TRANSIENT_MESSAGES),
           }),
           { minSize: 1, maxSize: 15 },
         ),
       );
 
-      assertSchedule(plan, steps);
+      assertModeOutcome(plan, mode, steps);
     })
       .settings(settings)
       .runSync();
+
+    assertEveryModeGenerated(seenModes);
   });
 
   test("reader never throws, only returns valid settings, ignores prototype keys", () => {
