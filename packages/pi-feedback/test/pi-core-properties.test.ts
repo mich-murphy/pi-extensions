@@ -1,6 +1,12 @@
 import assert from "node:assert/strict";
 import type { TestCase } from "@hegeldev/hegel";
-import { booleans, floats, integers, sampledFrom } from "@hegeldev/hegel/generators";
+import {
+  booleans,
+  floats,
+  integers,
+  sampledFrom,
+  weightedBooleans,
+} from "@hegeldev/hegel/generators";
 import type { Types } from "effect";
 import { describe, test } from "vitest";
 import { assertHegel, propertySettings } from "../../../test-support/hegel-settings";
@@ -38,13 +44,13 @@ function drawEvents(tc: TestCase): Drawn {
 
   for (let n = 1; n <= count; n += 1) {
     const fingerprint = tc.draw(sampledFrom([...FINGERPRINTS]), "fingerprint");
-    const piPath = tc.draw(booleans(), "piPath");
-    const batchOrdered = tc.draw(booleans(), "batchOrdered");
+    const piPath = tc.draw(weightedBooleans(0.8), "piPath");
+    const batchOrdered = tc.draw(weightedBooleans(0.2), "batchOrdered");
 
     const options: Types.Mutable<SignalOptions> = {
       n,
       session: tc.draw(sampledFrom([...SESSIONS]), "session"),
-      owner: tc.draw(sampledFrom([...OWNERS]), "owner"),
+      owner: OWNERS[tc.draw(weightedBooleans(0.7), "unattributed") ? 1 : 0],
       fingerprint,
       tool: tc.draw(sampledFrom([...TOOLS]), "tool"),
       error: tc.draw(sampledFrom([...ERRORS]), "error"),
@@ -52,7 +58,7 @@ function drawEvents(tc: TestCase): Drawn {
 
     if (piPath) {
       options.evidence = "pi-path";
-      options.pathExisted = tc.draw(booleans(), "pathExisted");
+      options.pathExisted = tc.draw(weightedBooleans(0.8), "pathExisted");
     }
 
     if (batchOrdered) {

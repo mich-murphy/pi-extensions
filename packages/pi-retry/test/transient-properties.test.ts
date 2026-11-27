@@ -12,6 +12,7 @@ import {
   record,
   sampledFrom,
   text,
+  weightedBooleans,
 } from "@hegeldev/hegel/generators";
 import { describe, test } from "vitest";
 import { propertySettings } from "../../../test-support/hegel-settings";
@@ -239,6 +240,10 @@ function drawFields(tc: TestCase): TestFields {
     if (tc.draw(booleans())) {
       fields[name] = tc.draw(leaf);
     }
+  }
+
+  if (tc.draw(weightedBooleans(0.1), "empty delays")) {
+    fields.delaysMinutes = [];
   }
 
   return fields;
