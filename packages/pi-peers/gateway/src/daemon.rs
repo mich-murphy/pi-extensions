@@ -1006,11 +1006,12 @@ impl Daemon {
     fn forward_permit(&self, id: ConnectionId, peer: &Value) -> Option<ForwardPermit> {
         let client = self.clients.get(&id)?;
         if let Some(remote) = &client.remote {
+            // A session never advertised in a roster (a reply-only remote) is bound to the link.
             let mut permit = remote
                 .roster
                 .iter()
                 .find(|(descriptor, _, _)| descriptor["peer"] == *peer)
-                .map(|(_, _, epoch)| epoch.permit())?;
+                .map_or_else(|| client.source.permit(), |(_, _, epoch)| epoch.permit());
             permit.bind_authority(client.source.permit());
             Some(permit)
         } else {
