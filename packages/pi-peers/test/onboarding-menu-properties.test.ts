@@ -218,7 +218,7 @@ function runExisting(tc: TestCase) {
   for (let index = 0; index < steps && !model.closed; index += 1) {
     const before = model.depth;
     const want = model.top.kind === "outcome" ? 0 : before - 1;
-    const back = tc.draw(booleans());
+    const back = tc.draw(integers({ minValue: 0, maxValue: 3 })) === 0;
 
     if (back) {
       model.back();
@@ -228,7 +228,7 @@ function runExisting(tc: TestCase) {
       const here = screen.kind === "list" ? screen.rows().map((row) => row.id) : [];
 
       const id =
-        here.length > 0 && tc.draw(booleans())
+        here.length > 0 && tc.draw(integers({ minValue: 0, maxValue: 3 })) !== 0
           ? tc.draw(sampledFrom(here))
           : tc.draw(sampledFrom(routeIds));
 
