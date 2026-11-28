@@ -304,9 +304,9 @@ messages can wake the model at provider cost, and the gateway's acquisition
 source and hash.
 
 **Acquisition gate:** this source tree ships one reviewed immutable Nix source pin
-(producer revision `82d7a9a` on `main`, with its NAR hash)
+(producer revision `a41f2bc` on `main`, with its NAR hash)
 and the reviewed manifest pin of the published
-[Pi Gateway v0.3.0](https://github.com/mich-murphy/pi-extensions/releases/tag/pi-gateway-v0.3.0)
+[Pi Gateway v0.4.0](https://github.com/mich-murphy/pi-extensions/releases/tag/pi-gateway-v0.4.0)
 native release, built from the same revision. On a supported target (macOS arm64,
 Linux arm64 or Linux x64), Apply builds the pinned gateway into a private
 dedicated result when a usable system Nix exists. Without usable Nix, or if the
