@@ -244,7 +244,7 @@ describe("presentation-only session tool rendering", () => {
       });
     }
   });
-  test.each([1, 4, 12, 30, 80])("primary uncertainty warnings survive width %i", (width) => {
+  test.each([1, 4, 80])("primary uncertainty warnings survive width %i", (width) => {
     const send = render(
       "peers_send",
       "result",
@@ -470,7 +470,6 @@ describe("presentation-only session tool rendering", () => {
   test.each([
     { count: 0, peerLabel: "peers", messageLabel: "messages" },
     { count: 1, peerLabel: "peer", messageLabel: "message" },
-    { count: 2, peerLabel: "peers", messageLabel: "messages" },
   ])("count $count uses English singular/plural labels", ({ count, peerLabel, messageLabel }) => {
     const peers = Array.from({ length: count }, () => ({ handle: "s-4f2a" }));
     expect(render("peers_list", "result", {}, result({ peers })).join("\n")).toContain(

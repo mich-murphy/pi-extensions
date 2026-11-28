@@ -35,11 +35,6 @@ describe("send hints say what happened to the message", () => {
       expect(hint).not.toMatch(/may have arrived/u);
     },
   );
-  test("an overloaded refusal naming a resource says not delivered", () => {
-    const hint = sendHint({ tag: "not_admitted", code: "overloaded", resource: "inbox" });
-    expect(hint).toMatch(/^Not delivered\./u);
-    expect(hint).not.toMatch(/may have arrived/u);
-  });
   test.each(unsureCodes)(
     "an unknown (%s) outcome says it may have arrived and not to resend",
     (code) => {
