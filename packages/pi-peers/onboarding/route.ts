@@ -10,7 +10,9 @@ export type ActivatePlan = (
   replace?: boolean,
 ) => Promise<void>;
 
-export type Restart = (setup: ManagedSetup) => Promise<"acknowledged" | "uncertain">;
+export type RestartOutcome = "acknowledged" | "uncertain" | "not-running";
+
+export type Restart = (setup: ManagedSetup) => Promise<RestartOutcome>;
 
 export type Reconnect = (fresh?: boolean) => Promise<void>;
 

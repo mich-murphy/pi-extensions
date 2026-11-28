@@ -170,17 +170,18 @@ async function changeWork(manage: Manage, change: Change, step: Step): Promise<O
 
   await saveOwnedPlan(agentDir, setup, plan, true);
 
-  const technical = [
-    manage.shared
-      ? "Settings saved. The shared gateway was asked to restart once."
-      : "Settings saved.",
-  ];
+  const technical = ["Settings saved."];
 
   try {
     if (manage.shared) {
       step(EDIT_STEPS[1]);
+      const restart = await manage.restart(setup);
+      technical[0] =
+        restart === "not-running"
+          ? "Settings saved. No gateway was running, so none was restarted."
+          : "Settings saved. The shared gateway was asked to restart once.";
 
-      if ((await manage.restart(setup)) === "uncertain") {
+      if (restart === "uncertain") {
         return pendingOutcome("Settings saved", EDIT_PENDING_NEXT, [
           ...technical,
           "The gateway restart was not confirmed.",
