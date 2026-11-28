@@ -221,7 +221,8 @@ row.
 ## Upgrading from certificates or keys
 
 Gateway 0.4.0 no longer supports certificates, CRLs, revocation floors or pinned
-keys. A config whose `remote` still has those fields, a remote `machineId`, or
-policies for other machines or with a `direction` does not start. `--diagnose`
+keys. A config whose `remote` still has those fields, a remote `machineId`,
+policies for other machines or an `incoming` direction does not start. The
+`"direction":"outgoing"` that 0.3.0 setup wrote is accepted and ignored. `--diagnose`
 reports `{"state":"retired-certificates"}` for it. Link again as above. The old
 certificate and key files are no longer used and can be deleted.

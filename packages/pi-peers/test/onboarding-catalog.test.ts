@@ -18,15 +18,15 @@ describe("gateway trusted catalog", () => {
     const { nix, native } = gatewayCatalog;
 
     const reviewed = {
-      sourceRevision: "82d7a9a83c688f930c4fef06d898b224a5941886",
-      version: "0.3.0",
-      narHash: "sha256-uo2xJEEGUjwBL67STeoPTKdKvJLM+EvbfclNFvM1hPE=",
+      sourceRevision: "a41f2bcecbc5e35da0383e5db162e8b733a1549f",
+      version: "0.4.0",
+      narHash: "sha256-92AiLvXj9OU7VI2aE8Hs66Qj53PQ0UmR+26cIgZfARQ=",
     };
 
     const published = {
-      sourceRevision: "82d7a9a83c688f930c4fef06d898b224a5941886",
-      version: "0.3.0",
-      manifestSha256: "560f0f65028dd4b58a1109aa2e8976ddf2ae57b893ff3cbd1a400fd019c1da02",
+      sourceRevision: "a41f2bcecbc5e35da0383e5db162e8b733a1549f",
+      version: "0.4.0",
+      manifestSha256: "cb949acc05ca29590c689330297fdf928dd9e8a56894b73318847bebd1f35ea0",
     };
 
     expect(nix).toStrictEqual(reviewed);
