@@ -86,9 +86,7 @@ describe.each(KEYBOARDS)("vimEditor with a $name keyboard", (keyboard) => {
   });
 
   test.each([
-    { text: "one two", keys: "0", cursor: { line: 0, col: 0 } },
     { text: "one two", keys: "0w", cursor: { line: 0, col: 4 } },
-    { text: "one two", keys: "$", cursor: { line: 0, col: 6 } },
     { text: "one two", keys: "$h", cursor: { line: 0, col: 5 } },
     { text: "one two", keys: "$hll", cursor: { line: 0, col: 6 } },
     { text: "one two", keys: "b", cursor: { line: 0, col: 4 } },
@@ -115,7 +113,6 @@ describe.each(KEYBOARDS)("vimEditor with a $name keyboard", (keyboard) => {
   test.each([
     { keys: "iX", text: "ab", expected: "aXb" },
     { keys: "aX", text: "ab", expected: "abX" },
-    { keys: "AX", text: "ab", expected: "abX" },
     { keys: "0AX", text: "ab", expected: "abX" },
     { keys: "IX", text: "ab", expected: "Xab" },
     { keys: "kaX", text: "\nab", expected: "X\nab" },

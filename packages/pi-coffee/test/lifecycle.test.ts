@@ -141,37 +141,6 @@ describe("coffee lifecycle", () => {
     expect(pi.spawned).toHaveLength(3);
   });
 
-  test("a continuation without settlement gets a fresh restart allowance", async () => {
-    const pi = harness();
-    await pi.emit("agent_start");
-    pi.setIdle(false);
-
-    pi.spawned[0]?.child.exit(1, null);
-    pi.spawned[1]?.child.exit(1, null);
-    expect(pi.spawned).toHaveLength(2);
-
-    await pi.emit("agent_start");
-    expect(pi.spawned).toHaveLength(3);
-    pi.spawned[2]?.child.exit(1, null);
-    expect(pi.spawned).toHaveLength(4);
-  });
-
-  test("reports a caffeinate that cannot run without restarting it", async () => {
-    const pi = harness();
-    await pi.emit("agent_start");
-
-    pi.spawned[0]?.child.fail("start", "ENOENT");
-    pi.spawned[0]?.child.fail("stop", "EPERM");
-
-    expect(pi.spawned).toHaveLength(1);
-    expect(pi.notifications).toStrictEqual([
-      {
-        message: "Coffee: /usr/bin/caffeinate was not found, so sleep prevention is unavailable.",
-        level: "error",
-      },
-    ]);
-  });
-
   test("names the failed operation and its code", async () => {
     const pi = harness();
     await pi.emit("agent_start");

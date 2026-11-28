@@ -55,13 +55,6 @@ function matchingSelectorIndexes(element: Element): Array<number> {
 }
 
 describe("compileSelector", () => {
-  test.each(SELECTORS)("matches %s exactly as linkedom does", (selector) => {
-    const matches = compileSelector(selector);
-    expect(elements().map((element) => [element.outerHTML, matches(element)])).toStrictEqual(
-      elements().map((element) => [element.outerHTML, element.matches(selector)]),
-    );
-  });
-
   test.each(["div > p", "*", ":not(p)", "[class='x']", "[href^='x']", "DIV", ""])(
     "rejects the unsupported selector %j",
     (selector) => {

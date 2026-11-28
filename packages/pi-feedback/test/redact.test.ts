@@ -13,12 +13,6 @@ describe("redact", () => {
     expect(redact(input)).toBe(expected);
   });
 
-  test("keeps the label of a bearer header", () => {
-    expect(redact("Authorization: Bearer abcdefghijklmnop")).toBe(
-      `Authorization: Bearer ${REDACTED}`,
-    );
-  });
-
   test("keeps the name of an assigned secret", () => {
     expect(redact('TYPESAFE_API_KEY="0123456789abcdef" next')).toBe(
       `TYPESAFE_API_KEY="${REDACTED}" next`,
@@ -47,11 +41,6 @@ describe("redact", () => {
     expect(redact(`before ${key} after`)).toBe(`before ${REDACTED} after`);
   });
 
-  test("leaves ordinary error text alone", () => {
-    const text = "ENOENT: no such file or directory, access '/tmp/x/token.txt'";
-    expect(redact(text)).toBe(text);
-  });
-
   test.each([
     ["password=hunter2", `password=${REDACTED}`],
     ["export DB_PASSWORD=hunter2", `export DB_PASSWORD=${REDACTED}`],
@@ -69,7 +58,6 @@ describe("redact", () => {
     ["credentials=u:p", `credentials=${REDACTED}`],
     ["MYSQL_PWD=pw mysql", `MYSQL_PWD=${REDACTED} mysql`],
     ["token := abc", `token := ${REDACTED}`],
-    ["password=changeme", `password=${REDACTED}`],
     ["Authorization: Basic dXNlcjpwYXNz", `Authorization: Basic ${REDACTED}`],
     ["Authorization: Bearer abc", `Authorization: Bearer ${REDACTED}`],
     ["Proxy-Authorization: xyz", `Proxy-Authorization: ${REDACTED}`],

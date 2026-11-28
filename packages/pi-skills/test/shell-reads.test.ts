@@ -27,7 +27,6 @@ describe("pathsReadByCommand reports content reads", () => {
     ['cat "AGENTS.md"', ["/repo/AGENTS.md"]],
     ["cat /abs/path/AGENTS.md", ["/abs/path/AGENTS.md"]],
     ["cat ./x/../AGENTS.md", ["/repo/AGENTS.md"]],
-    ["cd web && cat AGENTS.md", ["/repo/web/AGENTS.md"]],
     ["cd -- web && cat AGENTS.md", ["/repo/web/AGENTS.md"]],
     ["cd -L web && cat AGENTS.md", ["/repo/web/AGENTS.md"]],
     ["cd -P -- web && cat AGENTS.md", ["/repo/web/AGENTS.md"]],

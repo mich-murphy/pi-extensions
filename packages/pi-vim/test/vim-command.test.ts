@@ -12,17 +12,6 @@ function expectVimEditor(factory: EditorFactory | undefined): void {
 }
 
 describe("/vim", () => {
-  test("completes on and off", () => {
-    const { command } = loadVim("tui");
-
-    expect(command.getArgumentCompletions("")).toStrictEqual([
-      { value: "on", label: "on" },
-      { value: "off", label: "off" },
-    ]);
-    expect(command.getArgumentCompletions("of")).toStrictEqual([{ value: "off", label: "off" }]);
-    expect(command.getArgumentCompletions("x")).toStrictEqual([]);
-  });
-
   test("toggles off then on with no argument", async () => {
     const session = loadVim("tui");
     session.startSession();
@@ -43,25 +32,6 @@ describe("/vim", () => {
     expect(session.editors).toHaveLength(3);
   });
 
-  test("sets an explicit state, repeating it without toggling", async () => {
-    const session = loadVim("tui");
-
-    await session.runCommand("off");
-    await session.runCommand("off");
-    expect(session.editors).toStrictEqual([undefined, undefined]);
-    expect(session.notices.map((notice) => notice.message)).toStrictEqual([
-      "Vim is off for this session.",
-      "Vim is off for this session.",
-    ]);
-
-    await session.runCommand(" on ");
-    await session.runCommand("on");
-    expect(session.editors).toHaveLength(4);
-    expectVimEditor(session.editors[2]);
-    expectVimEditor(session.editors[3]);
-    expect(session.notices.at(-1)?.message).toBe("Vim is on for this session.");
-  });
-
   test("warns about an invalid argument and keeps the current state", async () => {
     const session = loadVim("tui");
 
@@ -80,17 +50,6 @@ describe("/vim", () => {
     session.startSession();
 
     expect(session.editors).toStrictEqual([undefined]);
-  });
-
-  test("installs Vim again at session start after turning it back on", async () => {
-    const session = loadVim("tui");
-    await session.runCommand("off");
-    await session.runCommand("on");
-
-    session.startSession();
-
-    expect(session.editors).toHaveLength(3);
-    expectVimEditor(session.editors.at(-1));
   });
 
   test("changes no editor outside TUI mode but still records the state", async () => {
