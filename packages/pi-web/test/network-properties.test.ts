@@ -8,6 +8,7 @@ import {
   sampledFrom,
   text as textGen,
   tuples,
+  weightedBooleans,
 } from "@hegeldev/hegel/generators";
 import { Result } from "effect";
 import { describe, expect, test } from "vitest";
@@ -110,6 +111,22 @@ const edgeOctets = composite((tc) => {
 
 const ipv4Octets = oneOf(randomOctets, edgeOctets);
 
+const rangeEdgeOctets = composite((tc) => {
+  const [base, length] = tc.draw(sampledFrom(IANA_NON_GLOBAL_V4), "range");
+  const atEnd = tc.draw(booleans(), "atEnd");
+  const delta = tc.draw(sampledFrom([-1, 0, 1]), "delta");
+  const anchor = atEnd ? base + 2 ** (32 - length) - 1 : base;
+  const value = Math.min(Math.max(anchor + delta, 0), 2 ** 32 - 1);
+
+  return [value >>> 24, (value >>> 16) & 255, (value >>> 8) & 255, value & 255];
+});
+
+const tableOctets = composite((tc) =>
+  tc.draw(weightedBooleans(0.75), "range edge")
+    ? tc.draw(rangeEdgeOctets, "edge octets")
+    : tc.draw(ipv4Octets, "octets"),
+);
+
 const toGroups = (o: ReadonlyArray<number>) => [
   (o[0] ?? 0) * 256 + (o[1] ?? 0),
   (o[2] ?? 0) * 256 + (o[3] ?? 0),
@@ -211,7 +228,7 @@ describe("isPrivateOrLocalIp properties", () => {
 
   test("IPv4 verdict matches the numeric IANA range table", () => {
     assertHegel(settings, (tc) => {
-      checkV4(tc.draw(ipv4Octets, "octets"));
+      checkV4(tc.draw(tableOctets, "octets"));
     });
   });
 

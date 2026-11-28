@@ -47,7 +47,7 @@ impl Gateway {
                     .expect("isolated fixture setup and framed I/O must succeed"),
             ])
             .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
+            .stderr(Stdio::inherit())
             .spawn()
             .expect("isolated fixture setup and framed I/O must succeed");
         let mut ready = String::new();
@@ -459,7 +459,7 @@ fn gateway_refuses_a_socket_directory_that_others_can_enter() {
         .arg("--config")
         .arg(&config)
         .stdout(Stdio::piped())
-        .stderr(Stdio::null())
+        .stderr(Stdio::inherit())
         .spawn()
         .expect("isolated gateway process");
     let mut first_line = String::new();
