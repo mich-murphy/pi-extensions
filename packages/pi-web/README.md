@@ -16,7 +16,8 @@ This loads every extension in the repository. To [load only some extensions](../
 
 ## Usage
 
-Ask Pi in plain language. The model picks the tool.
+Ask Pi in plain language. The model picks the tool. In the terminal, failed web calls show the error
+without expanding the tool output.
 
 - "Search the web for the latest Node.js LTS release."
 - "Fetch <https://example.com/docs> and summarize it."

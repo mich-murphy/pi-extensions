@@ -91,8 +91,16 @@ describe("untrusted text reaches the terminal without control or bidi characters
       };
 
       const content = [{ type: "text", text: body }];
-      assertSafe(renderText(fetchTool.renderResult({ content, details }, options, theme)));
-      assertSafe(renderText(fetchTool.renderResult({ content, isError: true }, options, theme)));
+      assertSafe(
+        renderText(
+          fetchTool.renderResult({ content, details }, options, theme, { isError: false }),
+        ),
+      );
+      const error = renderText(
+        fetchTool.renderResult({ content }, options, theme, { isError: true }),
+      );
+      assert.match(error, /^✗/u);
+      assertSafe(error);
       assertSafe(renderText(fetchTool.renderCall({ url: `https://example.com/${body}` }, theme)));
     })
       .settings(settings)
@@ -114,8 +122,16 @@ describe("untrusted text reaches the terminal without control or bidi characters
       };
 
       const content = [{ type: "text", text: body }];
-      assertSafe(renderText(searchTool.renderResult({ content, details }, options, theme)));
-      assertSafe(renderText(searchTool.renderResult({ content, isError: true }, options, theme)));
+      assertSafe(
+        renderText(
+          searchTool.renderResult({ content, details }, options, theme, { isError: false }),
+        ),
+      );
+      const error = renderText(
+        searchTool.renderResult({ content }, options, theme, { isError: true }),
+      );
+      assert.match(error, /^✗/u);
+      assertSafe(error);
       assertSafe(renderText(searchTool.renderCall({ query: body }, theme)));
     })
       .settings(settings)

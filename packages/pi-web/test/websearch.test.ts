@@ -1,3 +1,4 @@
+import { initTheme } from "@earendil-works/pi-coding-agent";
 import { Effect, Result, Duration } from "effect";
 import { describe, expect, test } from "vitest";
 import { ExaMcpSearchProvider } from "../provider-exa";
@@ -15,6 +16,8 @@ import {
   textOf,
   toolRuntimeWith,
 } from "./fakes";
+
+initTheme("dark");
 
 const DEFAULT_SETTINGS = settingsFrom();
 
@@ -169,10 +172,10 @@ describe("websearch tool", () => {
   });
 });
 
-function toolWith(provider: SearchProvider) {
+function toolWith(provider: SearchProvider, ...secrets: ReadonlyArray<string>) {
   return createWebSearchTool({
     settings: DEFAULT_SETTINGS,
-    redactText: redactorFor(),
+    redactText: redactorFor(...secrets),
     runtime: toolRuntimeWith({
       settings: DEFAULT_SETTINGS,
       searchProviders: [provider],
@@ -261,7 +264,7 @@ describe("websearch call rendering", () => {
 
 describe("websearch result rendering", () => {
   const theme = { fg: (_name: string, value: string) => value, bold: (value: string) => value };
-  const tool = toolWith(answeringProvider("exa"));
+  const tool = toolWith(answeringProvider("exa"), "sekrit-key");
 
   const details = {
     query: "q",
@@ -275,17 +278,28 @@ describe("websearch result rendering", () => {
   const render = (
     result: Parameters<typeof tool.renderResult>[0],
     options: { readonly expanded: boolean; readonly isPartial: boolean },
-  ) => renderText(tool.renderResult(result, options, theme));
+    isError = false,
+  ) => renderText(tool.renderResult(result, options, theme, { isError }));
 
-  test("shows progress while searching and the error text on failure", () => {
+  test("shows progress while searching", () => {
     expect(render({ content: [] }, { expanded: false, isPartial: true })).toBe("Searching...");
+  });
+
+  test.each([false, true])("renders a redacted Pi tool error (expanded: %s)", (expanded) => {
     expect(
       render(
-        { content: [{ type: "text", text: "All search providers failed" }], isError: true },
-        { expanded: false, isPartial: false },
+        {
+          content: [{ type: "text", text: "All search providers failed: sekrit-key" }],
+          details: undefined,
+        },
+        { expanded, isPartial: false },
+        true,
       ),
-    ).toBe("✗ All search providers failed");
-    expect(render({ content: [], isError: true }, { expanded: false, isPartial: false })).toBe(
+    ).toBe("✗ All search providers failed: [redacted]");
+  });
+
+  test("shows a fallback when the tool error has no text", () => {
+    expect(render({ content: [] }, { expanded: false, isPartial: false }, true)).toBe(
       "✗ Search failed",
     );
   });

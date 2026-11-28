@@ -173,17 +173,17 @@ export function createWebSearchTool(composition: WebSearchToolComposition) {
     renderResult(
       result: {
         readonly content: ReadonlyArray<{ readonly type: string; readonly text?: string }>;
-        readonly details?: WebSearchDetails;
-        readonly isError?: boolean;
+        readonly details?: WebSearchDetails | undefined;
       },
       options: { readonly expanded: boolean; readonly isPartial: boolean },
       theme: RenderTheme,
+      context: { readonly isError: boolean },
     ) {
       if (options.isPartial) {
         return new Text(theme.fg("warning", "Searching..."), 0, 0);
       }
 
-      if (result.isError === true) {
+      if (context.isError) {
         return new Text(
           theme.fg(
             "error",

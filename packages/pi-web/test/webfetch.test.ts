@@ -1,3 +1,4 @@
+import { initTheme } from "@earendil-works/pi-coding-agent";
 import { Duration, Effect, Result, Schema } from "effect";
 import { assert, describe, expect, test } from "vitest";
 import { FetchPage, FetchPageBody } from "../fetch-page";
@@ -37,6 +38,8 @@ import {
   toolRuntimeWith,
 } from "./fakes";
 import { expectNoLeak } from "./leaks";
+
+initTheme("dark");
 
 const DEFAULT_SETTINGS = settingsFrom();
 
@@ -250,16 +253,30 @@ describe("webfetch result rendering", () => {
   const render = (
     result: Parameters<typeof tool.renderResult>[0],
     options: { readonly expanded: boolean; readonly isPartial: boolean },
-  ) => renderText(tool.renderResult(result, options, theme));
+    isError = false,
+  ) => renderText(tool.renderResult(result, options, theme, { isError }));
 
-  test("shows progress while fetching and the error text on failure", () => {
+  test("shows progress while fetching", () => {
     expect(render({ content: [] }, { expanded: false, isPartial: true })).toBe("Fetching...");
+  });
+
+  test.each([false, true])("renders a redacted Pi tool error (expanded: %s)", (expanded) => {
     expect(
       render(
-        { content: [{ type: "text", text: "Request failed (403)" }], isError: true },
-        { expanded: false, isPartial: false },
+        {
+          content: [{ type: "text", text: "Request failed (403): sekrit-key" }],
+          details: undefined,
+        },
+        { expanded, isPartial: false },
+        true,
       ),
-    ).toBe("✗ Request failed (403)");
+    ).toBe("✗ Request failed (403): [redacted]");
+  });
+
+  test("shows a fallback when the tool error has no text", () => {
+    expect(render({ content: [] }, { expanded: false, isPartial: false }, true)).toBe(
+      "✗ Fetch failed",
+    );
   });
 
   test("badges a rescued, truncated page and previews it with its spill file when expanded", () => {
