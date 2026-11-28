@@ -1,25 +1,41 @@
 import type { JsonObject, JsonValue } from "@earendil-works/pi-ai";
+import { SessionManager } from "@earendil-works/pi-coding-agent";
 import type {
   MessageEndEvent,
+  SessionStartEvent,
+  SessionTreeEvent,
   ToolExecutionEndEvent,
   ToolExecutionStartEvent,
 } from "@earendil-works/pi-coding-agent";
 import type { Component } from "@earendil-works/pi-tui";
 import type { BatchCall } from "../batch.ts";
 import type {
-  FeedbackCommandContext,
   FeedbackContext,
-  FeedbackNote,
   FeedbackRegistration,
   FeedbackTool,
   NoteRenderer,
 } from "../feedback.ts";
+import type { FeedbackCommandContext } from "../toggle.ts";
 
 type Command = Parameters<FeedbackRegistration["registerCommand"]>[1];
 
 type StartHandler = (event: ToolExecutionStartEvent) => void;
 
-type Handler = EndHandler | MessageHandler | StartHandler;
+type SessionStartHandler = (
+  event: SessionStartEvent,
+  ctx: { sessionManager: SessionManager },
+) => void;
+
+type SessionTreeHandler = (event: SessionTreeEvent) => void;
+
+type Handler =
+  | EndHandler
+  | MessageHandler
+  | StartHandler
+  | SessionStartHandler
+  | SessionTreeHandler;
+
+type Exposure = NonNullable<FeedbackTool["exposure"]>;
 
 type EndHandler = (event: ToolExecutionEndEvent, ctx: FeedbackContext) => Promise<void>;
 
@@ -33,6 +49,14 @@ function isStartHandler(name: string, _handler: Handler): _handler is StartHandl
   return name === "tool_execution_start";
 }
 
+function isSessionStartHandler(name: string, _handler: Handler): _handler is SessionStartHandler {
+  return name === "session_start";
+}
+
+function isSessionTreeHandler(name: string, _handler: Handler): _handler is SessionTreeHandler {
+  return name === "session_tree";
+}
+
 const renderOptions = { expanded: false, keyText: () => "", keyHint: () => "" };
 const plainTheme = { fg: (_color: string, text: string) => text };
 
@@ -43,17 +67,60 @@ function renderText(component: Component | undefined): string {
     .trim();
 }
 
-export function fakePi(packagesDir: string, agentDir = "/home/u/.pi/agent") {
+export function fakePi(
+  packagesDir: string,
+  agentDir = "/home/u/.pi/agent",
+  sessionManager = SessionManager.inMemory("/repo", { id: "session-a" }),
+  excluded: ReadonlyArray<string> = [],
+) {
   const tools: Array<FeedbackTool> = [];
+  const extensionTools = new Map<string, { exposure: Exposure; defaultActive: boolean }>();
   const renderers = new Map<string, NoteRenderer>();
   const commands = new Map<string, Command>();
   const endHandlers: Array<EndHandler> = [];
   const messageHandlers: Array<MessageHandler> = [];
   const startHandlers: Array<StartHandler> = [];
-  const notes: Array<{ customType: string; data: FeedbackNote }> = [];
+  const sessionStartHandlers: Array<SessionStartHandler> = [];
+  const sessionTreeHandlers: Array<SessionTreeHandler> = [];
+  const notes: Array<{ customType: string; data: unknown }> = [];
   const notifications: Array<{ message: string; level: string | undefined }> = [];
-  let active = ["read", "bash"];
-  let session = "session-a";
+  const builtins = ["read", "bash"];
+  let active = [...builtins];
+  let pending = new Set<string>();
+  let restored = new Set<string>();
+  let appendError: Error | undefined;
+
+  const isRegistered = (name: string): boolean =>
+    builtins.includes(name) || (extensionTools.has(name) && !excluded.includes(name));
+
+  const isDeclarable = (name: string): boolean =>
+    isRegistered(name) && extensionTools.get(name)?.exposure !== "hidden";
+
+  const isActivatedOnRegistration = (name: string): boolean =>
+    isDeclarable(name) && extensionTools.get(name)?.defaultActive !== false;
+
+  const applyLoadout = (names: ReadonlyArray<string>): void => {
+    active = [...new Set(names)].filter((name) => isDeclarable(name));
+
+    for (const name of active) {
+      pending.delete(name);
+    }
+  };
+
+  const register = (name: string, exposure: Exposure, defaultActive: boolean): void => {
+    const before = isActivatedOnRegistration(name);
+    extensionTools.set(name, { exposure, defaultActive });
+    const activated = !before && isActivatedOnRegistration(name) ? [name] : [];
+    applyLoadout([...active, ...activated, ...pending]);
+  };
+
+  const restore = (names: ReadonlyArray<string> | undefined): void => {
+    if (names !== undefined) {
+      restored = new Set(names);
+      pending = new Set(names.filter((name) => !excluded.includes(name)));
+      applyLoadout(names);
+    }
+  };
 
   const registered = [
     { name: "read", sourceInfo: { path: "builtin:read", source: "builtin" } },
@@ -73,8 +140,9 @@ export function fakePi(packagesDir: string, agentDir = "/home/u/.pi/agent") {
 
   const pi: FeedbackRegistration = {
     registerTool: (tool) => {
-      tools.push(tool);
-      active = [...active, tool.name];
+      const index = tools.findIndex((known) => known.name === tool.name);
+      tools.splice(index === -1 ? tools.length : index, 1, tool);
+      register(tool.name, tool.exposure ?? "direct", true);
     },
     registerEntryRenderer: (customType, renderer) => {
       renderers.set(customType, renderer);
@@ -83,7 +151,11 @@ export function fakePi(packagesDir: string, agentDir = "/home/u/.pi/agent") {
       commands.set(name, options);
     },
     on: (name: string, handler: Handler) => {
-      if (isEndHandler(name, handler)) {
+      if (isSessionStartHandler(name, handler)) {
+        sessionStartHandlers.push(handler);
+      } else if (isSessionTreeHandler(name, handler)) {
+        sessionTreeHandlers.push(handler);
+      } else if (isEndHandler(name, handler)) {
         endHandlers.push(handler);
       } else if (isStartHandler(name, handler)) {
         startHandlers.push(handler);
@@ -92,28 +164,45 @@ export function fakePi(packagesDir: string, agentDir = "/home/u/.pi/agent") {
       }
     },
     appendEntry: (customType, data) => {
+      if (appendError !== undefined) {
+        throw appendError;
+      }
+
+      sessionManager.appendCustomEntry(customType, data);
       notes.push({ customType, data });
     },
     getAllTools: () => [
       ...registered,
-      ...tools.map((tool) => ({
-        name: tool.name,
-        sourceInfo: { path: `${packagesDir}/pi-feedback/index.ts`, source: "local" },
-      })),
+      ...tools.flatMap((tool) =>
+        isRegistered(tool.name)
+          ? [
+              {
+                name: tool.name,
+                sourceInfo: { path: `${packagesDir}/pi-feedback/index.ts`, source: "local" },
+              },
+            ]
+          : [],
+      ),
     ],
     getCommands: () => slashCommands,
     getActiveTools: () => [...active],
     setActiveTools: (names) => {
-      active = [...names];
+      const previous = active;
+      applyLoadout(names);
+
+      if (previous.some((name) => !active.includes(name) && restored.has(name))) {
+        pending.clear();
+      }
     },
   };
 
   const ctx = (): FeedbackContext => ({
-    sessionManager: { getSessionId: () => session },
+    sessionManager: { getSessionId: () => sessionManager.getSessionId() },
     model: { provider: "claude", id: "claude-opus-5-5" },
   });
 
   const commandCtx: FeedbackCommandContext = {
+    sessionManager,
     ui: {
       notify: (message, level) => {
         notifications.push({ message, level });
@@ -137,8 +226,38 @@ export function fakePi(packagesDir: string, agentDir = "/home/u/.pi/agent") {
     notes,
     notifications,
     active: () => active,
+    sessionManager,
+    failAppends: (error: Error | undefined) => {
+      appendError = error;
+    },
+    pending: () => [...pending],
     useSession: (id: string) => {
-      session = id;
+      sessionManager.newSession({ id });
+    },
+    registerLate: (name: string) => {
+      register(name, "direct", false);
+    },
+    start: (reason: SessionStartEvent["reason"], restoredTools?: ReadonlyArray<string>) => {
+      restore(restoredTools);
+
+      for (const handler of sessionStartHandlers) {
+        handler({ type: "session_start", reason }, { sessionManager });
+      }
+    },
+    tree: (newLeafId: string | null, restoredTools?: ReadonlyArray<string>) => {
+      const oldLeafId = sessionManager.getLeafId();
+
+      if (newLeafId === null) {
+        sessionManager.resetLeaf();
+      } else {
+        sessionManager.branch(newLeafId);
+      }
+
+      restore(restoredTools);
+
+      for (const handler of sessionTreeHandlers) {
+        handler({ type: "session_tree", newLeafId, oldLeafId });
+      }
     },
     call: async (params: Parameters<FeedbackTool["execute"]>[1]) =>
       tool().execute("call-1", params, undefined, undefined, ctx()),

@@ -15,8 +15,6 @@ import { Option, Schema } from "effect";
 import type { Types } from "effect";
 import { Type } from "typebox";
 import type { Static } from "typebox";
-import { onOffCommand } from "../shared/on-off-command.ts";
-import type { OnOffCommand } from "../shared/on-off-command.ts";
 import { isParallelBatch, isReadOnlyTool } from "./batch.ts";
 import type { BatchCall } from "./batch.ts";
 import { groupId, reportFingerprint, signalFingerprint } from "./fingerprint.ts";
@@ -26,6 +24,8 @@ import { createNestedTracker } from "./nested.ts";
 import { FEEDBACK_OUTPUT } from "./output.ts";
 import { createAttribution } from "./owner.ts";
 import type { Attribution, CommandSource, ToolSource } from "./owner.ts";
+import { registerFeedbackToggle } from "./toggle.ts";
+import type { FeedbackExposure, ToggleRegistration } from "./toggle.ts";
 
 export const FEEDBACK_TOOL = "harness_feedback";
 export const FEEDBACK_NOTE_TYPE = "feedback-report";
@@ -73,12 +73,9 @@ export type FeedbackContext = {
   readonly model: Pick<NonNullable<ExtensionContext["model"]>, "provider" | "id"> | undefined;
 };
 
-export type FeedbackCommandContext = {
-  readonly ui: Pick<ExtensionContext["ui"], "notify">;
-};
-
 export type FeedbackTool = {
   readonly name: string;
+  readonly exposure?: FeedbackExposure;
   readonly label: string;
   readonly description: string;
   readonly promptSnippet: string;
@@ -115,8 +112,8 @@ export type NoteRenderer = (
 export type FeedbackRegistration = {
   readonly registerTool: (tool: FeedbackTool) => void;
   readonly registerEntryRenderer: (customType: string, renderer: NoteRenderer) => void;
-  readonly registerCommand: (name: string, options: OnOffCommand<FeedbackCommandContext>) => void;
-  readonly on: {
+  readonly registerCommand: ToggleRegistration["registerCommand"];
+  readonly on: ToggleRegistration["on"] & {
     (name: "tool_execution_start", handler: (event: ToolExecutionStartEvent) => void): void;
     (
       name: "tool_execution_end",
@@ -124,7 +121,8 @@ export type FeedbackRegistration = {
     ): void;
     (name: "message_end", handler: (event: Pick<MessageEndEvent, "message">) => void): void;
   };
-  readonly appendEntry: (customType: string, data: FeedbackNote) => void;
+  readonly appendEntry: ToggleRegistration["appendEntry"] &
+    ((customType: string, data: FeedbackNote) => void);
   readonly getAllTools: () => ReadonlyArray<ToolSource>;
   readonly getCommands: () => ReadonlyArray<CommandSource>;
   readonly getActiveTools: () => Array<string>;
@@ -301,8 +299,16 @@ export function registerFeedback(
   let batch: ReadonlyArray<BatchCall> = [];
   const nested = createNestedTracker();
   const filedBySession = new Map<string, Set<string>>();
-  let enabled = true;
   let unwritten = 0;
+
+  const toggle = registerFeedbackToggle(pi, {
+    tool: FEEDBACK_TOOL,
+    expose: (exposure) => {
+      pi.registerTool({ ...feedbackTool, exposure });
+    },
+    note: () =>
+      ` Ledger: ${ledger}.${unwritten > 0 ? ` ${unwritten} tool errors could not be written to it.` : ""}`,
+  });
 
   const record = async (ctx: FeedbackContext, params: FeedbackParams): Promise<FeedbackResult> => {
     const session = ctx.sessionManager.getSessionId();
@@ -356,7 +362,7 @@ export function registerFeedback(
     }
   };
 
-  pi.registerTool({
+  const feedbackTool: FeedbackTool = {
     name: FEEDBACK_TOOL,
     label: "Harness feedback",
     description:
@@ -375,12 +381,13 @@ export function registerFeedback(
       openWorldHint: false,
     },
     execute: async (_toolCallId, params, _signal, _onUpdate, ctx) =>
-      enabled
+      toggle.enabled()
         ? record(ctx, params)
         : result("Harness feedback is off for this session; nothing was recorded.", {
             status: "off",
           }),
-  });
+  };
+  pi.registerTool(feedbackTool);
 
   pi.registerEntryRenderer(FEEDBACK_NOTE_TYPE, (entry, _options, theme) => {
     const note = Option.getOrUndefined(decodeNote(entry.data));
@@ -404,7 +411,12 @@ export function registerFeedback(
       error,
     );
 
-    if (!enabled || !event.isError || event.toolName === FEEDBACK_TOOL || ended.suppressed) {
+    if (
+      !toggle.enabled() ||
+      !event.isError ||
+      event.toolName === FEEDBACK_TOOL ||
+      ended.suppressed
+    ) {
       return;
     }
 
@@ -424,21 +436,4 @@ export function registerFeedback(
       unwritten += 1;
     }
   });
-
-  pi.registerCommand(
-    "feedback",
-    onOffCommand<FeedbackCommandContext>({
-      name: "feedback",
-      label: "Harness feedback",
-      description: "Turn harness feedback recording on or off for this session",
-      enabled: () => enabled,
-      apply: (next) => {
-        enabled = next;
-        const active = pi.getActiveTools().filter((name) => name !== FEEDBACK_TOOL);
-        pi.setActiveTools(next ? [...active, FEEDBACK_TOOL] : active);
-      },
-      note: () =>
-        ` Ledger: ${ledger}.${unwritten > 0 ? ` ${unwritten} tool errors could not be written to it.` : ""}`,
-    }),
-  );
 }
