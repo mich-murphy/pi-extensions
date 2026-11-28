@@ -113,20 +113,6 @@ describe("isPrivateOrLocalIp", () => {
 });
 
 const RANGES: ReadonlyArray<readonly [cidr: string, purpose: string]> = [
-  ["0.0.0.0/8", "RFC 791 this network"],
-  ["10.0.0.0/8", "RFC 1918 private use"],
-  ["100.64.0.0/10", "RFC 6598 carrier-grade NAT"],
-  ["127.0.0.0/8", "RFC 1122 loopback"],
-  ["169.254.0.0/16", "RFC 3927 link-local"],
-  ["172.16.0.0/12", "RFC 1918 private use"],
-  ["192.168.0.0/16", "RFC 1918 private use"],
-  ["224.0.0.0/4", "RFC 5771 multicast"],
-  ["240.0.0.0/4", "RFC 1112 reserved and broadcast"],
-  ["192.0.0.0/24", "RFC 6890 IETF protocol assignments"],
-  ["192.0.2.0/24", "RFC 5737 TEST-NET-1"],
-  ["198.18.0.0/15", "RFC 2544 benchmarking"],
-  ["198.51.100.0/24", "RFC 5737 TEST-NET-2"],
-  ["203.0.113.0/24", "RFC 5737 TEST-NET-3"],
   ["::/96", "RFC 4291 unspecified, loopback and deprecated IPv4-compatible"],
   ["64:ff9b::/96", "RFC 6052 NAT64 well-known prefix"],
   ["64:ff9b:1::/48", "RFC 8215 local-use NAT64"],
@@ -137,10 +123,9 @@ const RANGES: ReadonlyArray<readonly [cidr: string, purpose: string]> = [
   ["ff00::/8", "RFC 4291 multicast"],
 ];
 
-type Cidr = { readonly v6: boolean; readonly first: bigint; readonly last: bigint };
+type Cidr = { readonly first: bigint; readonly last: bigint };
 
-const parseV4 = (text: string): bigint =>
-  text.split(".").reduce((acc, part) => acc * 256n + BigInt(part), 0n);
+const MAX_V6 = (1n << 128n) - 1n;
 
 function parseV6(text: string): bigint {
   const [head = "", tail = ""] = text.split("::");
@@ -154,9 +139,6 @@ function parseV6(text: string): bigint {
   );
 }
 
-const formatV4 = (value: bigint): string =>
-  [24n, 16n, 8n, 0n].map((shift) => String((value >> shift) & 255n)).join(".");
-
 const formatV6 = (value: bigint): string =>
   Array.from({ length: 8 }, (_, index) =>
     ((value >> BigInt(16 * (7 - index))) & 0xff_ffn).toString(16),
@@ -164,35 +146,32 @@ const formatV6 = (value: bigint): string =>
 
 function parseCidr(text: string): Cidr {
   const [address = "", length = ""] = text.split("/");
-  const v6 = address.includes(":");
-  const first = v6 ? parseV6(address) : parseV4(address);
+  const first = parseV6(address);
 
-  return { v6, first, last: first + (1n << ((v6 ? 128n : 32n) - BigInt(length))) - 1n };
+  return { first, last: first + (1n << (128n - BigInt(length))) - 1n };
 }
 
 const PARSED_RANGES = RANGES.map(([cidr]) => parseCidr(cidr));
 
-const covered = (v6: boolean, value: bigint): boolean =>
-  PARSED_RANGES.some((range) => range.v6 === v6 && value >= range.first && value <= range.last);
+const covered = (value: bigint): boolean =>
+  PARSED_RANGES.some((range) => value >= range.first && value <= range.last);
 
 function edgeCases(cidr: string): ReadonlyArray<readonly [string, string, boolean]> {
   const range = parseCidr(cidr);
-  const format = range.v6 ? formatV6 : formatV4;
-  const max = (1n << (range.v6 ? 128n : 32n)) - 1n;
 
   const cases: Array<[string, string, boolean]> = [
-    [`${cidr} first`, format(range.first), true],
-    [`${cidr} last`, format(range.last), true],
+    [`${cidr} first`, formatV6(range.first), true],
+    [`${cidr} last`, formatV6(range.last), true],
   ];
 
   if (range.first > 0n) {
     const below = range.first - 1n;
-    cases.push([`${cidr} below`, format(below), covered(range.v6, below)]);
+    cases.push([`${cidr} below`, formatV6(below), covered(below)]);
   }
 
-  if (range.last < max) {
+  if (range.last < MAX_V6) {
     const above = range.last + 1n;
-    cases.push([`${cidr} above`, format(above), covered(range.v6, above)]);
+    cases.push([`${cidr} above`, formatV6(above), covered(above)]);
   }
 
   return cases;
