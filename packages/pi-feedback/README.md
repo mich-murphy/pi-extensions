@@ -11,10 +11,23 @@ Run `pi install git:github.com/mich-murphy/pi-extensions`, or [load only some ex
 | Command | Effect |
 | --- | --- |
 | `/feedback` | Toggles recording for this session. |
-| `/feedback on` | Turns recording on and makes the `harness_feedback` tool available. |
-| `/feedback off` | Turns recording off and hides the tool from the model. |
+| `/feedback on` | Turns recording on and asks Pi to make the `harness_feedback` tool available. |
+| `/feedback off` | Turns recording off and hides the tool from the model at once. |
 
 The command confirms each change with `Harness feedback is on for this session.` or `Harness feedback is off for this session.`, followed by the ledger's path. Any other argument shows `Usage: /feedback [on|off]` and changes nothing.
+
+The recording setting is saved in the session file, so it applies to the whole session:
+
+| After | Recording |
+| --- | --- |
+| Reopening the session, `/reload` or compaction | Kept |
+| `/tree`, to any point, including one before the command | Kept |
+| `/new`, a fork or a clone | Starts on, because it is a new session |
+| Turning it off before the first message | Pi has no session file yet. The setting is written with the first message; if Pi exits before then, nothing persists |
+
+Recording and tool visibility are separate. While recording is off, the `harness_feedback` tool is hidden and nothing else in Pi's tool list changes. While it is on, the tool is visible only when Pi's tool list includes it. That list comes from the session's history and your `--tools`, `--no-tools` and `--exclude-tools` choices. A fork or clone of a session with recording off therefore starts recording on, but it may keep the tool hidden if the tool was hidden in the history Pi restores or you passed `--tools -harness_feedback`. `/feedback on` asks Pi to show the tool again, unless `--no-tools`, a `--tools` allowlist or `--exclude-tools` keeps it out.
+
+If the setting cannot be saved, the command still applies it until Pi reloads or reopens the session and warns that it was not saved instead of confirming it. The saved setting is never sent to the model. Sessions from before this setting was saved start on. Two Pi processes that have the same session file open do not see each other's changes until the session is reopened.
 
 ## What it records
 
