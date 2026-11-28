@@ -1,5 +1,9 @@
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
-import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { SessionManager } from "@earendil-works/pi-coding-agent";
+import type { ExtensionContext, SessionStartEvent } from "@earendil-works/pi-coding-agent";
 import { describe, expect, test } from "vitest";
 import { USAGE_LIMIT_CHANNEL } from "../../shared/usage-limit";
 import {
@@ -7,6 +11,7 @@ import {
   CHECK_INTERVAL_MS,
   LEGACY_RETRY_TYPE,
   MAX_WAIT_MS,
+  SETTING_TYPE,
   registerRetry,
 } from "../retry";
 import { assistantEntry, fakePi, userEntry } from "./fake-pi";
@@ -21,6 +26,32 @@ function harness(mode: ExtensionContext["mode"] = "tui") {
   registerRetry(pi.pi, pi.deps);
 
   return pi;
+}
+
+function open(
+  session: SessionManager,
+  reason: SessionStartEvent["reason"] = "startup",
+  mode: ExtensionContext["mode"] = "tui",
+) {
+  const pi = fakePi(mode, {}, session);
+  registerRetry(pi.pi, pi.deps);
+  pi.startSession(reason);
+
+  return pi;
+}
+
+function savedFile(session: SessionManager): string {
+  const file = session.getSessionFile();
+
+  if (file === undefined) {
+    throw new Error("test setup: the session has no file");
+  }
+
+  return file;
+}
+
+function say(session: SessionManager, content: string): string {
+  return session.appendMessage({ role: "user", content, timestamp: 0 });
 }
 
 function failOnUsageLimit(pi: ReturnType<typeof harness>, notice: TestUsageNotice = NOTICE) {
@@ -270,6 +301,175 @@ describe("/retry", () => {
     expect(pi.notifications).toStrictEqual([
       { message: "Usage: /retry [on|off]", level: "warning" },
     ]);
+  });
+});
+
+describe("keeping /retry off for the whole session", () => {
+  test("stays off when the saved session file is reopened", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "pi-retry-session-"));
+
+    try {
+      const session = SessionManager.create(dir, dir);
+      say(session, "first");
+      const original = open(session);
+      await original.command("off");
+      original.shutdown();
+      const reopened = open(SessionManager.open(savedFile(session)), "resume");
+
+      expect(failOnUsageLimit(reopened)).toBeUndefined();
+      expect(reopened.timerCount()).toBe(0);
+      reopened.advanceTo(RESETS_AT);
+      expect(reopened.sent).toStrictEqual([]);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("stays off after a reload re-registers the extension", async () => {
+    const session = SessionManager.inMemory();
+    const original = open(session);
+    await original.command("off");
+    original.shutdown();
+
+    const reloaded = open(session, "reload");
+
+    expect(failOnUsageLimit(reloaded)).toBeUndefined();
+    expect(reloaded.timerCount()).toBe(0);
+  });
+
+  test("turning it back on is restored too", async () => {
+    const session = SessionManager.inMemory();
+    const original = open(session);
+    await original.command("off");
+    await original.command("on");
+
+    expect(failOnUsageLimit(open(session, "reload"))).toBeDefined();
+  });
+
+  test.each([
+    ["the default visible row before the off command", (_first: string, second: string) => second],
+    ["an earlier message before the off command", (first: string) => first],
+  ])("stays off after /tree moves to %s", async (_label, pick) => {
+    const session = SessionManager.inMemory();
+    const target = pick(say(session, "first"), say(session, "second"));
+    const pi = open(session);
+    await pi.command("off");
+
+    session.branch(target);
+    pi.navigateTree();
+
+    expect(failOnUsageLimit(pi)).toBeUndefined();
+    expect(failOnUsageLimit(open(session, "resume"))).toBeUndefined();
+  });
+
+  test("a new session starts on", async () => {
+    const session = SessionManager.inMemory();
+    const pi = open(session);
+    await pi.command("off");
+    pi.shutdown();
+    session.newSession();
+
+    expect(failOnUsageLimit(open(session, "new"))).toBeDefined();
+  });
+
+  test("a fork or clone starts on although it copies the off record", async () => {
+    const session = SessionManager.inMemory();
+    say(session, "first");
+    const pi = open(session);
+    await pi.command("off");
+    const leaf = say(session, "after");
+    const parentId = session.getSessionId();
+    pi.shutdown();
+
+    session.createBranchedSession(leaf);
+
+    expect(session.getSessionId()).not.toBe(parentId);
+    expect(session.getEntries().some((entry) => entry.type === "custom")).toBe(true);
+    expect(failOnUsageLimit(open(session, "fork"))).toBeDefined();
+  });
+
+  test("uses the newest valid record for this session and ignores the rest", () => {
+    const session = SessionManager.inMemory();
+    const sessionId = session.getSessionId();
+    session.appendCustomEntry(SETTING_TYPE, { version: 1, enabled: false, sessionId });
+
+    for (const data of [
+      { version: 2, enabled: true, sessionId },
+      { version: 1, enabled: "on", sessionId },
+      { version: 1, enabled: true, sessionId: "another-session" },
+      { version: 1, enabled: true },
+      null,
+      "on",
+    ]) {
+      session.appendCustomEntry(SETTING_TYPE, data);
+    }
+
+    session.appendCustomEntry("other-extension", { version: 1, enabled: true, sessionId });
+
+    expect(failOnUsageLimit(open(session))).toBeUndefined();
+  });
+
+  test("a session with only invalid records starts on", () => {
+    const session = SessionManager.inMemory();
+    session.appendCustomEntry(SETTING_TYPE, { version: 2, enabled: false });
+    session.appendCustomEntry(SETTING_TYPE, {
+      version: 1,
+      enabled: false,
+      sessionId: "another-session",
+    });
+
+    expect(failOnUsageLimit(open(session))).toBeDefined();
+  });
+
+  test("saves a versioned record tagged with the session", async () => {
+    const session = SessionManager.inMemory();
+    const pi = open(session);
+    await pi.command("off");
+
+    expect(pi.appended).toStrictEqual([
+      {
+        customType: SETTING_TYPE,
+        data: { version: 1, enabled: false, sessionId: session.getSessionId() },
+      },
+    ]);
+    expect(pi.notifications.at(-1)?.message).toBe("Retry is off for this session.");
+  });
+
+  test("a failed save still cancels the pending wait and says it was not saved", async () => {
+    const pi = harness();
+    const writes: Array<unknown> = [];
+    pi.pi.appendEntry = (_customType, data) => {
+      writes.push(data);
+      throw new Error("synthetic full disk");
+    };
+    failOnUsageLimit(pi);
+    expect(pi.timerCount()).toBe(1);
+
+    await pi.command("off");
+
+    expect(writes).toHaveLength(1);
+    expect(pi.timerCount()).toBe(0);
+    pi.advanceTo(RESETS_AT + 10 * MINUTE);
+    expect(pi.sent).toStrictEqual([]);
+    expect(pi.notifications.at(-1)).toStrictEqual({
+      message:
+        "Retry is off for this session. Saving it failed, so it lasts only until this session is reloaded or reopened.",
+      level: "info",
+    });
+    expect(failOnUsageLimit(pi)).toBeUndefined();
+  });
+
+  test("the wait is cancelled before the save is attempted", async () => {
+    const pi = harness();
+    const timersAtSave: Array<number> = [];
+    pi.pi.appendEntry = () => {
+      timersAtSave.push(pi.timerCount());
+    };
+    failOnUsageLimit(pi);
+
+    await pi.command("off");
+
+    expect(timersAtSave).toStrictEqual([0]);
   });
 });
 
