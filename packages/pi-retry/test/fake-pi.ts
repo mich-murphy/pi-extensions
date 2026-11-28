@@ -1,6 +1,11 @@
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
 import type { AssistantMessage } from "@earendil-works/pi-ai";
-import type { ExtensionContext, ProjectedSessionEntry } from "@earendil-works/pi-coding-agent";
+import { SessionManager } from "@earendil-works/pi-coding-agent";
+import type {
+  ExtensionContext,
+  ProjectedSessionEntry,
+  SessionStartEvent,
+} from "@earendil-works/pi-coding-agent";
 import { ProcessTerminal, TuiAltScreen } from "@earendil-works/pi-tui";
 import type { Component } from "@earendil-works/pi-tui";
 import type {
@@ -84,7 +89,11 @@ export function userEntry(id: string): ProjectedSessionEntry {
   };
 }
 
-export function fakePi(mode: ExtensionContext["mode"] = "tui", settings: RetrySettingsInput = {}) {
+export function fakePi(
+  mode: ExtensionContext["mode"] = "tui",
+  settings: RetrySettingsInput = {},
+  sessionManager = SessionManager.inMemory(),
+) {
   const handlers: Partial<RetryHandlers> = {};
   const channels = new Map<string, Parameters<RetryRegistration["events"]["on"]>[1]>();
   const commands = new Map<string, Command>();
@@ -102,6 +111,7 @@ export function fakePi(mode: ExtensionContext["mode"] = "tui", settings: RetrySe
 
   const ctx = {
     mode,
+    sessionManager,
     model: { contextWindow: 200_000 },
     isIdle: () => idle,
     ui: {
@@ -134,6 +144,7 @@ export function fakePi(mode: ExtensionContext["mode"] = "tui", settings: RetrySe
       sent.push({ message, options });
     },
     appendEntry: (customType, data) => {
+      sessionManager.appendCustomEntry(customType, data);
       appended.push({ customType, data });
     },
     registerMessageRenderer: (customType, renderer) => {
@@ -172,6 +183,9 @@ export function fakePi(mode: ExtensionContext["mode"] = "tui", settings: RetrySe
     },
     publish: (channel: string, data: TestUsageNotice) => {
       channels.get(channel)?.(data);
+    },
+    startSession: (reason: SessionStartEvent["reason"] = "startup") => {
+      handlers.session_start?.({ type: "session_start", reason }, ctx);
     },
     startRun: () => {
       handler("agent_start")({ type: "agent_start" });

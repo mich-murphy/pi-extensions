@@ -12,14 +12,18 @@ import type {
   MessageRenderOptions,
   MessageRenderer,
   RegisteredCommand,
+  SessionStartEvent,
   Theme,
 } from "@earendil-works/pi-coding-agent";
 import { Text } from "@earendil-works/pi-tui";
 import type { Component, TUI } from "@earendil-works/pi-tui";
+import { isFailure, try as tryResult } from "effect/Result";
 import {
   Boolean as SchemaBoolean,
   Finite,
+  Literal,
   Number as SchemaNumber,
+  String as SchemaString,
   Struct,
   declare,
   is,
@@ -33,6 +37,8 @@ import type { UsageLimitNotice } from "../shared/usage-limit";
 export const RETRY_TYPE = "retry";
 
 export const LEGACY_RETRY_TYPE = "auto-resume";
+
+export const SETTING_TYPE = "pi-retry-toggle";
 
 const MARKER_TYPES: ReadonlySet<string> = new Set([RETRY_TYPE, LEGACY_RETRY_TYPE]);
 
@@ -74,6 +80,7 @@ export type MarkerRenderer = (
 ) => Component;
 
 export type RetryContext = Pick<ExtensionContext, "mode" | "isIdle"> & {
+  readonly sessionManager: Pick<ExtensionContext["sessionManager"], "getEntries" | "getSessionId">;
   readonly model?: { readonly contextWindow: number } | undefined;
   readonly ui: Pick<ExtensionContext["ui"], "notify"> & {
     readonly setWidget: (key: string, content: WidgetFactory | undefined) => void;
@@ -81,6 +88,7 @@ export type RetryContext = Pick<ExtensionContext, "mode" | "isIdle"> & {
 };
 
 export type RetryHandlers = {
+  session_start: (event: Pick<SessionStartEvent, "type" | "reason">, ctx: RetryContext) => void;
   agent_start: (event: { readonly type: "agent_start" }) => void;
   turn_start: (event: { readonly type: "turn_start" }) => void;
   session_tree: (event: { readonly type: "session_tree" }) => void;
@@ -104,6 +112,7 @@ export type RetryRegistration = Pick<ExtensionAPI, "sendMessage" | "appendEntry"
     },
   ) => void;
   readonly on: {
+    (name: "session_start", handler: RetryHandlers["session_start"]): void;
     (name: "agent_start", handler: RetryHandlers["agent_start"]): void;
     (name: "turn_start", handler: RetryHandlers["turn_start"]): void;
     (name: "session_tree", handler: RetryHandlers["session_tree"]): void;
@@ -193,6 +202,26 @@ export function readTransientSettings(settings: unknown): TransientSettings | un
   return isTransientSettings(candidate) ? candidate : undefined;
 }
 
+const isSavedSetting = is(
+  Struct({ version: Literal(1), enabled: SchemaBoolean, sessionId: SchemaString }),
+);
+
+function savedSetting(sessionManager: RetryContext["sessionManager"]): boolean | undefined {
+  const sessionId = sessionManager.getSessionId();
+
+  return sessionManager
+    .getEntries()
+    .flatMap((entry) =>
+      entry.type === "custom" &&
+      entry.customType === SETTING_TYPE &&
+      isSavedSetting(entry.data) &&
+      entry.data.sessionId === sessionId
+        ? [entry.data.enabled]
+        : [],
+    )
+    .at(-1);
+}
+
 function isTransientFailure(message: AssistantMessage, contextWindow?: number): boolean {
   return (
     (isRetryableAssistantError(message) && !isContextOverflow(message, contextWindow)) ||
@@ -236,6 +265,7 @@ export function registerRetry(pi: RetryRegistration, dependencies: RetryDependen
   let wait: Wait | undefined;
   let streak: Streak | undefined;
   let warnedAboutSettings = false;
+  let unsaved = false;
 
   const cancel = (): void => {
     if (wait === undefined) {
@@ -386,6 +416,10 @@ export function registerRetry(pi: RetryRegistration, dependencies: RetryDependen
     pi.registerMessageRenderer(type, renderMarker);
   }
 
+  pi.on("session_start", (_event, ctx) => {
+    enabled = savedSetting(ctx.sessionManager) ?? true;
+  });
+
   pi.on("agent_start", () => {
     cancel();
     publishedThisTurn = undefined;
@@ -463,13 +497,27 @@ export function registerRetry(pi: RetryRegistration, dependencies: RetryDependen
       description:
         "Turn automatic retry after usage limits and transient provider errors on or off for this session",
       enabled: () => enabled,
-      apply: (next) => {
+      apply: (next, ctx) => {
         enabled = next;
 
         if (!enabled) {
           cancel();
         }
+
+        unsaved = isFailure(
+          tryResult(() => {
+            pi.appendEntry(SETTING_TYPE, {
+              version: 1,
+              enabled: next,
+              sessionId: ctx.sessionManager.getSessionId(),
+            });
+          }),
+        );
       },
+      note: () =>
+        unsaved
+          ? " Saving it failed, so it lasts only until this session is reloaded or reopened."
+          : "",
     }),
   );
 }

@@ -16,6 +16,17 @@ Run `pi install git:github.com/mich-murphy/pi-extensions`, or [load only some ex
 
 Any other argument shows `Usage: /retry [on|off]` and changes nothing.
 
+The setting is saved in the session file and covers the whole session:
+
+| After | Setting |
+| --- | --- |
+| Reopening the session, `/reload` or compaction | Kept |
+| `/tree` to any point, including before `/retry off` | Kept |
+| `/new`, fork or clone | On, because it is a new session |
+| Quitting before the first message | Lost, because Pi has no session file yet |
+
+A pending wait is never saved. If saving fails, the new setting applies until the session is reloaded or reopened, and the confirmation says so.
+
 ## Configuration
 
 Add a `piRetry.transient` object to `~/.pi/agent/settings.json`, or to a project's `.pi/settings.json`. Every field is optional. An invalid field makes Pi warn once and use all defaults.
