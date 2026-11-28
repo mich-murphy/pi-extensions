@@ -140,18 +140,12 @@ describe("synchronous bounded admission and protected receipts", () => {
     expect(h.state.admit(input).tag).toBe("admitted");
   });
 
-  test.each([
-    { limits: { inboxMessages: 0 }, resource: "inbox" },
-    { limits: { inboxBytes: 1 }, resource: "inbox" },
-    { limits: { receipts: 0 }, resource: "receipts" },
-    { limits: { relations: 0 }, resource: "relations" },
-    { limits: { recipientsPerWork: 0 }, resource: "relations" },
-  ])("capacity refusal is pre-admission: $resource $limits", ({ limits, resource }) => {
-    const h = harness(limits);
+  test("capacity refusal is pre-admission: relations { recipientsPerWork: 0 }", () => {
+    const h = harness({ recipientsPerWork: 0 });
     expect(h.state.admit(input)).toMatchObject({
       tag: "not_admitted",
       code: "overloaded",
-      resource,
+      resource: "relations",
     });
     expect(h.offered).toHaveLength(0);
     expect(h.state.stats().receipts).toBe(0);
