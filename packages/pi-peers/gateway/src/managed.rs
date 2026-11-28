@@ -51,8 +51,12 @@ impl Record {
         })
     }
     fn matches(&self, other: &Self) -> bool {
+        self.device == other.device && self.recorded(other)
+    }
+    /// Same path, inode and change time to the nanosecond. The device number is left out:
+    /// macOS can renumber an APFS volume at boot, so a dead socket keeps everything but it.
+    fn recorded(&self, other: &Self) -> bool {
         self.socket == other.socket
-            && self.device == other.device
             && self.inode == other.inode
             && self.changed == other.changed
             && self.changed_ns == other.changed_ns
@@ -137,9 +141,12 @@ impl ManagedGuard {
         };
         match Record::read(socket) {
             Ok(actual) => {
-                if !record
-                    .as_ref()
-                    .is_some_and(|record| record.matches(&actual))
+                // The socket must be the recorded incarnation, on the filesystem that holds the
+                // lock now (not the device number saved at bind time, which a reboot can change).
+                if actual.device != metadata.dev()
+                    || !record
+                        .as_ref()
+                        .is_some_and(|record| record.recorded(&actual))
                 {
                     return Err(io::Error::other(
                         "managed-ownership-ambiguous: socket incarnation is not recorded; stop participating Pi sessions and select a new private socket path; never unlink an unverified socket",
