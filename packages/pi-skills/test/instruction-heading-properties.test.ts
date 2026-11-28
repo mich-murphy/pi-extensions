@@ -39,7 +39,7 @@ describe("instruction heading properties", () => {
       "never throws and returns a clean heading for arbitrary text",
       (tc) => {
         const content = tc.draw(
-          textGen({ alphabet: "#=- \t\r\n`~<!>ab.md", maxSize: 60 }),
+          textGen({ alphabet: "#=- \t\r\n`~<!>ab.md\u0001\u001B\u007F", maxSize: 60 }),
           "content",
         );
 

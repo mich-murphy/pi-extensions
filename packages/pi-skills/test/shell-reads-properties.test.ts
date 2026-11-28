@@ -137,7 +137,7 @@ function sequence(tc: TestCase): Braced {
 
 const directory = textGen({ alphabet: "abcdefg", minSize: 1, maxSize: 4 });
 const plain = textGen({ alphabet: "abc.", maxSize: 4 });
-const SHELL_NOISE = "cat ab'\"\\$`(){}<>|&;#~*?[]\n-=!,.";
+const SHELL_NOISE = "cat ab'\"\\$`(){}<>|&;#~*?[]\n-=!,./";
 
 const TOKENS = [
   "cat",
@@ -168,6 +168,10 @@ const TOKENS = [
   "$f",
   '"$f"',
   "a.md",
+  "/",
+  "//a",
+  "/a/../b",
+  "/a/./b/",
   "-n",
   "env",
   "timeout 5",
@@ -175,6 +179,14 @@ const TOKENS = [
   "xargs",
   "#",
 ];
+
+const UNNORMALIZED = ["/a/../b", "//a", "/a/./b/", "/a//b", "/"];
+
+const catAbsolute = composite((tc) => {
+  const before = tc.draw(arrays(sampledFrom(TOKENS), { maxSize: 6 })).join(" ");
+
+  return `${before}\ncat ${tc.draw(sampledFrom(UNNORMALIZED))}`;
+});
 
 function inSingleQuotes(script: string): string {
   return `'${script.replaceAll("'", String.raw`'\''`)}'`;
@@ -208,6 +220,7 @@ describe("pathsReadByCommand properties", () => {
           oneOf(
             textGen({ alphabet: SHELL_NOISE, maxSize: 60 }),
             arrays(sampledFrom(TOKENS), { maxSize: 14 }).map((parts) => parts.join(" ")),
+            catAbsolute,
           ),
           "source",
         );

@@ -216,18 +216,31 @@ function runExisting(tc: TestCase) {
   const steps = tc.draw(integers({ minValue: 1, maxValue: 40 }));
 
   for (let index = 0; index < steps && !model.closed; index += 1) {
-    const before = model.depth;
-    const back = tc.draw(booleans());
-
-    if (back) {
-      model.back();
-      depths.push(model.closed || model.depth === 0 ? 0 : before - model.depth - 1);
-    } else {
-      model.activate(tc.draw(sampledFrom(routeIds)));
-    }
+    walkExisting(model, tc, depths);
   }
 
   return { blockedRepair, events, depths };
+}
+
+function existingActivation(model: MenuModel, tc: TestCase): string {
+  const screen = model.top;
+  const here = screen.kind === "list" ? screen.rows().map((row) => row.id) : [];
+  const preferHere = here.length > 0 && tc.draw(integers({ minValue: 0, maxValue: 3 })) !== 0;
+
+  return tc.draw(sampledFrom(preferHere ? here : routeIds));
+}
+
+function walkExisting(model: MenuModel, tc: TestCase, depths: Array<number>): void {
+  const want = model.top.kind === "outcome" ? 0 : model.depth - 1;
+
+  if (tc.draw(integers({ minValue: 0, maxValue: 3 })) !== 0) {
+    model.activate(existingActivation(model, tc));
+
+    return;
+  }
+
+  model.back();
+  depths.push(model.closed ? 0 : model.depth - want);
 }
 
 function unconsentedAny(events: ReadonlyArray<string>): Array<number> {

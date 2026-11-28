@@ -1,7 +1,15 @@
 import assert from "node:assert/strict";
 import type { CustomEditor } from "@earendil-works/pi-coding-agent";
 import { setKittyProtocolActive } from "@earendil-works/pi-tui";
-import { arrays, sampledFrom } from "@hegeldev/hegel/generators";
+import {
+  arrays,
+  integers,
+  just,
+  oneOf,
+  sampledFrom,
+  text as textGen,
+  tuples,
+} from "@hegeldev/hegel/generators";
 import { afterEach, describe, test } from "vitest";
 import {
   assertHegel,
@@ -79,6 +87,17 @@ const TOKENS = [
   "\u001B[B",
   "\u0005",
 ];
+
+const EDIT_TOKENS = ["x", "dd", "dw", "diw", "u", "k", "j", "0", "$", "ESC"];
+const tokenGen = oneOf(sampledFrom(TOKENS), sampledFrom(EDIT_TOKENS));
+const UNDO_EDITS = ["x", "dd", "dw", "diw", "D"];
+
+const segmentGen = oneOf(
+  tokenGen.map((token) => [token]),
+  tuples(sampledFrom(UNDO_EDITS), sampledFrom(UNDO_EDITS), just("u")).map((tokens) => [...tokens]),
+);
+
+const charGen = oneOf(sampledFrom(ALPHABET), sampledFrom(["😀", "é", " ", "a"]));
 
 const MOTIONS = new Set(["h", "j", "k", "l", "0", "$", "w", "b"]);
 const EDITS = new Set(["x", "D", "dd", "dw", "diw"]);
@@ -189,7 +208,9 @@ function checkInnerWordOnBlank(token: string, before: Snapshot, after: Snapshot)
 type PendingUndo = { readonly restored: string; readonly remaining: number };
 
 function undosNeeded(token: string, before: Snapshot): number {
-  return token === "dd" && before.lines.length > 1 ? 2 : 1;
+  const deletesText = (before.lines[before.line] ?? "") !== "";
+
+  return token === "dd" && before.lines.length > 1 && deletesText ? 2 : 1;
 }
 
 function trackUndo(
@@ -215,6 +236,31 @@ function trackUndo(
   const changed = before.label === " NORMAL " && EDITS.has(token) && before.text !== after.text;
 
   return changed ? { restored: before.text, remaining: undosNeeded(token, before) } : undefined;
+}
+
+function assertDeleteWord(keyboard: Keyboard, line: string, col: number): void {
+  setKittyProtocolActive(keyboard.kittyProtocol);
+  const editor = createEditor();
+  editor.setText(line);
+  editor.handleInput(keyboard.escape);
+
+  for (const token of ["0", ...Array.from({ length: col }, () => "l")]) {
+    send(editor, keyboard, token);
+  }
+
+  assert.equal(editor.getCursor().col, col, "cursor placed");
+  let end = col;
+
+  while (line.charAt(end) === " ") {
+    end += 1;
+  }
+
+  while (end < line.length && line.charAt(end) !== " ") {
+    end += 1;
+  }
+
+  send(editor, keyboard, "dw");
+  assert.equal(editor.getText(), line.slice(0, col) + line.slice(end), "dw deletes one word");
 }
 
 function runTrace(
@@ -244,15 +290,25 @@ describe.each(KEYBOARDS)("vimEditor properties with a $name keyboard", (keyboard
   test("random key traces keep the editor invariants", { timeout: propertyTimeout(30_000) }, () => {
     assertHegel(propertySettings(), (tc) => {
       const lines = tc.draw(
-        arrays(arrays(sampledFrom(ALPHABET), { maxSize: 12 }), {
+        arrays(arrays(charGen, { maxSize: 12 }), {
           minSize: 1,
           maxSize: 5,
         }),
         "lines",
       );
 
-      const tokens = tc.draw(arrays(sampledFrom(TOKENS), { maxSize: 20 }), "tokens");
-      runTrace(keyboard, lines, tokens);
+      const anyLine = integers({ minValue: 0, maxValue: lines.length - 1 });
+      const up = tc.draw(oneOf(just(0), anyLine, anyLine), "up");
+      const tokens = tc.draw(arrays(segmentGen, { maxSize: 14 }), "tokens").flat();
+      runTrace(keyboard, lines, [...Array.from({ length: up }, () => "k"), ...tokens]);
+    });
+  });
+
+  test("dw deletes up to the next word start", { timeout: propertyTimeout(30_000) }, () => {
+    assertHegel(propertySettings(), (tc) => {
+      const line = tc.draw(textGen({ alphabet: "ab ", minSize: 1, maxSize: 12 }), "line");
+      const col = tc.draw(integers({ minValue: 0, maxValue: line.length - 1 }), "col");
+      assertDeleteWord(keyboard, line, col);
     });
   });
 });

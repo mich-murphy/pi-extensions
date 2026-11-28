@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { visibleWidth } from "@earendil-works/pi-tui";
+import type { TestCase } from "@hegeldev/hegel";
 import { integers } from "@hegeldev/hegel/generators";
 import type { Schema } from "effect";
 import { describe, expect, test } from "vitest";
@@ -142,6 +143,38 @@ const cases: Array<RenderCase> = [
 ];
 
 const takeCall = (args: Schema.JsonObject) => render("peers_take", "call", args, undefined);
+
+function renderSend(tc: TestCase) {
+  const code = tc.draw(integers({ minValue: 0, maxValue: 159 }), "control");
+  const width = tc.draw(integers({ minValue: 1, maxValue: 100 }), "width");
+  const repeats = tc.draw(integers({ minValue: 1, maxValue: 50 }), "length");
+
+  const body =
+    `${String.fromCodePoint(code)}\u001b]52;c;unsafe\u0007\n\t界😀é ![x](https://invalid.invalid) `.repeat(
+      repeats,
+    );
+
+  const args = { to: "s-4f2a", kind: "request", content: body };
+  const payload = result({ outcome: admitted, note: body });
+  const before = JSON.stringify({ args, payload });
+  const rendered: Array<{
+    expanded: boolean;
+    slot: "call" | "result";
+    lines: ReadonlyArray<string>;
+  }> = [];
+
+  for (const expanded of [false, true]) {
+    for (const slot of ["call", "result"] as const) {
+      rendered.push({
+        expanded,
+        slot,
+        lines: render("peers_send", slot, args, payload, expanded, width),
+      });
+    }
+  }
+
+  return { width, rendered, before, after: JSON.stringify({ args, payload }) };
+}
 
 describe("presentation-only session tool rendering", () => {
   test.each(cases)(
@@ -391,41 +424,46 @@ describe("presentation-only session tool rendering", () => {
     ).toContain("ctrl+o for details");
   });
   test(
-    "Hegel: generated controls, Unicode and multiline bodies are inert, cell-bounded and nonmutating",
+    "Hegel: generated controls, Unicode and multiline bodies render inert",
     { timeout: propertyTimeout(60_000) },
     () => {
       assertHegel(propertySettings(200, 456n), (tc) => {
-        const code = tc.draw(integers({ minValue: 0, maxValue: 159 }), "control");
-        const width = tc.draw(integers({ minValue: 1, maxValue: 100 }), "width");
-        const repeats = tc.draw(integers({ minValue: 1, maxValue: 50 }), "length");
+        for (const { lines } of renderSend(tc).rendered) {
+          for (const line of lines) {
+            assert(!stripStyle(line).includes("\u001b"));
+            assert(!line.includes("\u009b"));
+          }
+        }
+      });
+    },
+  );
+  test(
+    "Hegel: generated bodies stay cell-bounded and collapsed previews stay short",
+    { timeout: propertyTimeout(60_000) },
+    () => {
+      assertHegel(propertySettings(200, 456n), (tc) => {
+        const { width, rendered } = renderSend(tc);
 
-        const body =
-          `${String.fromCodePoint(code)}\u001b]52;c;unsafe\u0007\n\t界😀é ![x](https://invalid.invalid) `.repeat(
-            repeats,
-          );
-
-        const args = { to: "s-4f2a", kind: "request", content: body };
-        const payload = result({ outcome: admitted, note: body });
-        const before = JSON.stringify({ args, payload });
-        const rendered: Array<ReadonlyArray<string>> = [];
-
-        for (const expanded of [false, true]) {
-          for (const slot of ["call", "result"] as const) {
-            const lines = render("peers_send", slot, args, payload, expanded, width);
-            rendered.push(lines);
-
-            for (const line of lines) {
-              assert(visibleWidth(line) <= width);
-              assert(!stripStyle(line).includes("\u001b"));
-              assert(!line.includes("\u009b"));
-            }
+        for (const { lines } of rendered) {
+          for (const line of lines) {
+            assert(visibleWidth(line) <= width);
           }
         }
 
-        const [collapsedCall = [], collapsedResult = []] = rendered;
-        assert(collapsedCall.length <= 12);
-        assert(collapsedResult.length <= 24);
-        assert.equal(JSON.stringify({ args, payload }), before);
+        const [callLines = Number.POSITIVE_INFINITY, resultLines = Number.POSITIVE_INFINITY] =
+          rendered.map(({ lines }) => lines.length);
+        assert(callLines <= 12);
+        assert(resultLines <= 24);
+      });
+    },
+  );
+  test(
+    "Hegel: rendering generated bodies never mutates arguments or payload",
+    { timeout: propertyTimeout(60_000) },
+    () => {
+      assertHegel(propertySettings(200, 456n), (tc) => {
+        const { before, after } = renderSend(tc);
+        assert.equal(after, before);
       });
     },
   );

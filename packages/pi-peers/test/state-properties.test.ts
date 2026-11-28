@@ -143,7 +143,8 @@ function applySend(state: SessionState, model: Model, step: Step): void {
 }
 
 function applyPayloadControl(state: SessionState, model: Model, step: Step): void {
-  const entry = model.entries.get(step.id);
+  const known = [...model.entries.values()];
+  const entry = model.entries.get(step.id) ?? known[step.id % Math.max(1, known.length)];
 
   if (entry === undefined) {
     return;
@@ -230,6 +231,7 @@ function assertAdmissionTrace(steps: ReadonlyArray<Step>): void {
 
 const sizeGenerator = oneOf(
   integers({ minValue: 0, maxValue: INBOX_BYTES + 100 }),
+  integers({ minValue: 0, maxValue: 32 }),
   sampledFrom(
     [1, 2].flatMap((count) =>
       [-1, 0, 1].map((delta) => Math.max(0, Math.floor(INBOX_BYTES / count) - baseBytes + delta)),
@@ -266,6 +268,8 @@ function assertSingleDelivery(size: number, unit: string): void {
   }
 }
 
+const actionGenerator = oneOf(integers({ minValue: 0, maxValue: 7 }), sampledFrom([0, 2]));
+
 const advanceGenerator = oneOf(
   integers({ minValue: 0, maxValue: 700_000 }),
   sampledFrom([1, 299_999, 300_000, 300_001, 599_999, 600_000]),
@@ -282,7 +286,7 @@ describe("Hegel bounded state/fault traces against independent models", () => {
 
         for (let index = 0; index < count; index++) {
           steps.push({
-            action: tc.draw(integers({ minValue: 0, maxValue: 7 }), `action${index}`),
+            action: tc.draw(actionGenerator, `action${index}`),
             id: tc.draw(integers({ minValue: 0, maxValue: 7 }), `id${index}`),
             body: tc.draw(integers({ minValue: 0, maxValue: 3 }), `body${index}`),
             advance: tc.draw(advanceGenerator, `advance${index}`),
