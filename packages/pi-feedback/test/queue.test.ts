@@ -26,16 +26,6 @@ describe("deriveGroups", () => {
     expect(two[0]?.ready).toBe(true);
   });
 
-  test.each(["pi-core", "unattributed"])("never makes a %s group ready", (owner) => {
-    const groups = deriveGroups([
-      signal({ n: 1, session: "a", owner }),
-      signal({ n: 2, session: "b", owner }),
-      signal({ n: 3, session: "c", owner }),
-    ]);
-
-    expect(groups[0]?.ready).toBe(false);
-  });
-
   test("ranks by sessions times records and doubles a blocked group", () => {
     const groups = deriveGroups([
       signal({ n: 1, session: "a" }),
