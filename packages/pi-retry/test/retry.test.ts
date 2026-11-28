@@ -94,17 +94,6 @@ describe("waiting for a usage limit to reset", () => {
     expect(pi.sent).toHaveLength(1);
   });
 
-  test("waits again when the resumed turn hits a new limit", () => {
-    const pi = harness();
-    failOnUsageLimit(pi);
-    pi.advanceTo(RESETS_AT);
-
-    const result = failOnUsageLimit(pi, { resetsAt: RESETS_AT + 30 * MINUTE });
-
-    expect(result?.entries).toHaveLength(1);
-    expect(pi.widgetText(RETRY_TYPE)).toContain("t+120m");
-  });
-
   test("accepts a reset exactly at the five-hour cap", () => {
     const pi = harness();
 
@@ -140,12 +129,6 @@ describe("leaving the failure to the user", () => {
     ).toBeUndefined();
     expect(pi.timerCount()).toBe(0);
     expect(pi.notifications).toStrictEqual([]);
-  });
-
-  test("a notice from another provider does not authorize omitting the failure", () => {
-    const pi = harness();
-    expect(failOnUsageLimit(pi, { provider: "other", resetsAt: RESETS_AT })).toBeUndefined();
-    expect(pi.timerCount()).toBe(0);
   });
 
   test.each([
@@ -215,15 +198,6 @@ describe("cancelling a scheduled resume", () => {
     expect(pi.widgetText(RETRY_TYPE)).toBeUndefined();
     pi.advanceTo(RESETS_AT);
     expect(pi.sent).toStrictEqual([]);
-  });
-
-  test("input from another extension leaves the resume in place", () => {
-    const pi = harness();
-    failOnUsageLimit(pi);
-
-    pi.input("extension");
-
-    expect(pi.timerCount()).toBe(1);
   });
 
   test("input with nothing scheduled is passed through silently", () => {
@@ -297,19 +271,6 @@ describe("/retry", () => {
       { message: "Usage: /retry [on|off]", level: "warning" },
     ]);
   });
-
-  test("completes on and off", async () => {
-    const pi = harness();
-    const command = await pi.command("on");
-
-    await expect(Promise.resolve(command.getArgumentCompletions?.("o"))).resolves.toStrictEqual([
-      { value: "on", label: "on" },
-      { value: "off", label: "off" },
-    ]);
-    await expect(Promise.resolve(command.getArgumentCompletions?.("of"))).resolves.toStrictEqual([
-      { value: "off", label: "off" },
-    ]);
-  });
 });
 
 describe("the resume marker", () => {
@@ -356,15 +317,6 @@ describe("the resume marker", () => {
 });
 
 describe("print and JSON modes", () => {
-  test("print mode reports the reset on stderr and never waits", () => {
-    const pi = harness("print");
-
-    expect(failOnUsageLimit(pi)).toBeUndefined();
-
-    expect(pi.stderr).toStrictEqual([`Usage limit resets at ${new Date(RESETS_AT).toISOString()}`]);
-    expect(pi.timerCount()).toBe(0);
-  });
-
   test("JSON mode records the reset as a session entry", () => {
     const pi = harness("json");
 

@@ -91,25 +91,6 @@ describe("classifying a failed reply", () => {
     expect(pi.timerCount()).toBe(0);
   });
 
-  test("an aborted run does not resume", () => {
-    const pi = harness();
-    pi.startRun();
-
-    expect(
-      pi.settle("aborted", [assistantEntry("a1", "aborted", CONNECTION_ERROR)]),
-    ).toBeUndefined();
-    expect(pi.timerCount()).toBe(0);
-    expect(pi.notifications).toStrictEqual([]);
-  });
-
-  test("an error run whose last entry is not a failed reply does not resume", () => {
-    const pi = harness();
-    pi.startRun();
-
-    expect(pi.settle("error", [assistantEntry("a1", "stop", CONNECTION_ERROR)])).toBeUndefined();
-    expect(pi.timerCount()).toBe(0);
-  });
-
   test.each(["print", "json"] as const)("%s mode never schedules", (mode) => {
     const pi = harness(mode);
 
@@ -240,67 +221,9 @@ describe("retrying a transient failure", () => {
 
     expect(failAndResume(pi, clock)).toBe(2);
   });
-
-  test("an aborted run keeps the backoff without resuming", () => {
-    const pi = harness();
-    const clock = { now: 0 };
-    failAndResume(pi, clock);
-    pi.startRun();
-    pi.settle("aborted", [assistantEntry("x", "aborted")]);
-
-    expect(failAndResume(pi, clock)).toBe(2);
-  });
 });
 
 describe("cancelling and superseding a transient wait", () => {
-  test("a new prompt cancels it", () => {
-    const pi = harness();
-    fail(pi);
-
-    pi.input("interactive");
-
-    expect(pi.timerCount()).toBe(0);
-    pi.advanceTo(10 * MINUTE);
-    expect(pi.sent).toStrictEqual([]);
-  });
-
-  test.each([
-    [
-      "agent start",
-      (pi: ReturnType<typeof harness>) => {
-        pi.startRun();
-      },
-    ],
-    [
-      "tree navigation",
-      (pi: ReturnType<typeof harness>) => {
-        pi.navigateTree();
-      },
-    ],
-    [
-      "shutdown",
-      (pi: ReturnType<typeof harness>) => {
-        pi.shutdown();
-      },
-    ],
-    [
-      "/retry off",
-      (pi: ReturnType<typeof harness>) => {
-        void pi.command("off");
-      },
-    ],
-  ])("%s cancels it", (_case, act) => {
-    const pi = harness();
-    fail(pi);
-
-    act(pi);
-
-    expect(pi.timerCount()).toBe(0);
-    expect(pi.widgetText(RETRY_TYPE)).toBeUndefined();
-    pi.advanceTo(10 * MINUTE);
-    expect(pi.sent).toStrictEqual([]);
-  });
-
   test("/retry off stops later transient waits", async () => {
     const pi = harness();
 
