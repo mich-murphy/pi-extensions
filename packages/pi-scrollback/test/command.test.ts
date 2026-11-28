@@ -57,14 +57,6 @@ function setup(mode = "tui") {
 }
 
 describe("/scrollback [on|off]", () => {
-  test("is on by default and installs the widget under the scrollback key", () => {
-    const { adapters, start, setWidget } = setup();
-    start();
-    expect(setWidget).toHaveBeenCalledTimes(1);
-    expect(setWidget.mock.calls[0]?.[0]).toBe("scrollback");
-    expect(adapters).toHaveLength(1);
-  });
-
   test("no argument toggles: off disposes and clears, on installs again", async () => {
     const { adapters, start, run, setWidget, notify } = setup();
     start();

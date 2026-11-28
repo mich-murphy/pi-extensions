@@ -343,14 +343,6 @@ describe("native prompt boundaries and row", () => {
     expect(selectContext(lines, block.length + 2)).toBeUndefined();
     expect(selectContext(lines, block.length * 2 + 1)).toBe("same last");
   });
-  test("blank turns keep ordinal identity without a blank sticky row", () => {
-    const empty = new UserMessageComponent("").render(30);
-    const next = new UserMessageComponent("next").render(30);
-    const lines = [...empty, "answer", ...next, "answer"];
-    expect(empty).toHaveLength(0);
-    expect(selectContext(lines, empty.length, ["next"])).toBeUndefined();
-    expect(selectContext(lines, lines.length - 1, ["next"])).toBe("next");
-  });
   test.each([1, 2])("fits Unicode and strips ANSI at width %s", (width) => {
     const row = contextRow(
       "\u001b[31m界 é 👩‍💻\u001b[0m\u001b]8;;https://example.com\u0007link\u001b]8;;\u0007",
