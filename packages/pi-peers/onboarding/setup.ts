@@ -18,7 +18,6 @@ import {
 } from "./catalog.js";
 import { requireAttendedUI } from "./dialog.js";
 import { requestManagedRestart } from "./managed.js";
-import type { ManagedSetup } from "./managed.js";
 import { report, withTechnical } from "./menu/forms.js";
 import type { Progress } from "./menu/forms.js";
 import { outcomeLevel, outcomeText } from "./menu/progress.js";
@@ -163,7 +162,7 @@ function selectedSource(
 export type Supplied = {
   backend: SetupBackend;
   description: string;
-  restart?: (setup: ManagedSetup) => Promise<"acknowledged" | "uncertain">;
+  restart?: Restart;
   tailscale?: string;
 };
 

@@ -7,6 +7,7 @@ import { isAbsolute, dirname, join } from "node:path";
 import { promisify } from "node:util";
 import { Schema } from "effect";
 import type { Types } from "effect";
+import { errnoCode } from "../../shared/errno.js";
 import type { EnsureGateway } from "../adapter/client.js";
 import { GATEWAY_LOCAL_SETUP_CAPABILITIES, GATEWAY_WIRE_VERSION } from "./catalog.js";
 import { digest, regularBytes, privateDirectory } from "./files.js";
@@ -271,9 +272,34 @@ function startupDemand(deadline: number, signal: AbortSignal): void {
   }
 }
 
+async function stopped(path: string): Promise<boolean> {
+  return new Promise((resolve) => {
+    const socket = createConnection(path);
+
+    const finish = (value: boolean) => {
+      socket.destroy();
+      resolve(value);
+    };
+
+    socket.setTimeout(1000, () => {
+      finish(false);
+    });
+    socket.once("error", (error) => {
+      finish(["ENOENT", "ECONNREFUSED"].includes(errnoCode(error) ?? ""));
+    });
+    socket.once("connect", () => {
+      finish(false);
+    });
+  });
+}
+
 export async function requestManagedRestart(
   setup: ManagedSetup,
-): Promise<"acknowledged" | "uncertain"> {
+): Promise<"acknowledged" | "uncertain" | "not-running"> {
+  if (await stopped(setup.socketPath)) {
+    return "not-running";
+  }
+
   try {
     const { stdout } = await execute(setup.executable, ["--request-restart", setup.gatewayPath], {
       timeout: 5000,

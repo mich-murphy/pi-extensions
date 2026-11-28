@@ -270,6 +270,30 @@ fn lock_contention_and_recorded_crash_recovery() {
 }
 
 #[test]
+fn a_recorded_socket_survives_a_reboot_that_renumbers_its_volume() {
+    // macOS can give an APFS volume a new device number at boot. The dead socket keeps its
+    // inode and change time, so it is still the recorded incarnation and must be recovered.
+    let mut fixture = Fixture::new();
+    let owner = fixture.start();
+    fixture.kill(owner);
+    let lock = fixture.directory.join("s.managed.lock");
+    let mut record: Value =
+        serde_json::from_slice(&fs::read(&lock).expect("record")).expect("record JSON");
+    let device = record["device"].as_u64().expect("device");
+    record["device"] = json!(device.wrapping_add(1));
+    fs::write(&lock, serde_json::to_vec(&record).expect("record bytes"))
+        .expect("renumbered record");
+    let recovered = fixture.start();
+    let mut next = fixture.connect();
+    register(&mut next, "after-reboot");
+    drop(next);
+    assert!(
+        fixture.exited(recovered, Duration::from_secs(3)),
+        "the recovered daemon follows the demand lifecycle"
+    );
+}
+
+#[test]
 fn unknown_external_and_replaced_sockets_are_never_removed() {
     let mut fixture = Fixture::new();
     let socket = fixture.directory.join("s");

@@ -38,7 +38,7 @@ import { runMenu } from "./onboarding/menu/run.js";
 import type { MenuContext } from "./onboarding/menu/run.js";
 import { NotActiveError, refusalText } from "./onboarding/outcome.js";
 import { NO_CHANGES, NOTHING_TO_RESET } from "./onboarding/route.js";
-import type { ActivatePlan, SetupRoute } from "./onboarding/route.js";
+import type { ActivatePlan, Restart, SetupRoute } from "./onboarding/route.js";
 import { prepareSetup, resetOutcome } from "./onboarding/setup.js";
 
 type MenuHolder = { model?: MenuModel };
@@ -157,7 +157,7 @@ export default function registerCommunication(
   testBackend?: {
     backend: SetupBackend;
     description: string;
-    restart?: (setup: ManagedSetup) => Promise<"acknowledged" | "uncertain">;
+    restart?: Restart;
     tailscale?: string;
     observe?: { consented: (action: string) => void };
     runtime?: typeof createAdapterRuntime;

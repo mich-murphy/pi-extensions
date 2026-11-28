@@ -33,23 +33,23 @@ async function activateSaved(
   step(STEPS[1]);
   const connected = await reconnectedOnceWithoutReplay(reconnect);
 
-  if (restart === "acknowledged" && connected) {
+  if (restart !== "uncertain" && connected) {
     return {
       ok: true,
       headline: "✓ Saved configuration activated",
       facts: [],
       next: "This Pi kept its identity and state. Choose Doctor to check the remote link.",
       technical: [
-        "Saved configuration activated with guarded local registration. Same Pi nonce/state retained; remote link readiness remains unverified. One restart request sent, no application requests replayed.",
+        `Saved configuration activated with guarded local registration. Same Pi nonce/state retained; remote link readiness remains unverified. ${restart === "not-running" ? "No gateway was running, so none was restarted" : "One restart request sent"}; no application requests replayed.`,
       ],
     };
   }
 
   return failed(
     "Activation failed",
-    restart === "acknowledged"
-      ? "this Pi could not reconnect"
-      : "the gateway did not confirm the restart",
+    restart === "uncertain"
+      ? "the gateway did not confirm the restart"
+      : "this Pi could not reconnect",
     "Your settings are saved. Choose Reconnect in a minute, or close other Pi sessions first.",
     [`Restart ${restart}.`],
   );
